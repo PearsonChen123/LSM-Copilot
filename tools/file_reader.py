@@ -5,6 +5,7 @@ Usage:
     python file_reader.py image.lsm --info
     python file_reader.py image.tif --voxel 0.44 0.17 0.17 --info
     python file_reader.py image.czi --info
+    python file_reader.py image.mrc --info
 """
 import sys
 import argparse
@@ -52,8 +53,49 @@ def load_image(path, voxel=None):
         except ImportError:
             sys.exit("LIF support requires: pip install readlif")
 
+    elif suffix in ('.mrc', '.mrcs', '.map', '.rec', '.st'):
+        return _load_mrc(p, voxel)
+
     else:
         sys.exit(f"Unsupported format: {suffix}")
+
+
+def _load_mrc(p, voxel=None):
+    try:
+        import mrcfile
+    except ImportError:
+        sys.exit("MRC support requires: pip install mrcfile")
+
+    with mrcfile.open(str(p), permissive=True) as mrc:
+        data = mrc.data.squeeze().astype(np.float32)
+        vs = mrc.voxel_size
+
+        if voxel:
+            vz, vy, vx = voxel
+        elif vs.x > 0 and vs.y > 0 and vs.z > 0:
+            vx = float(vs.x) / 1e4  # Å → µm
+            vy = float(vs.y) / 1e4
+            vz = float(vs.z) / 1e4
+        else:
+            vx, vy, vz = 1.0, 1.0, 1.0
+
+        h = mrc.header
+        labels = []
+        for i in range(min(int(h.nlabl), 10)):
+            raw = h.label[i]
+            txt = raw.decode('ascii', errors='ignore').strip() if isinstance(raw, bytes) else str(raw).strip()
+            if txt:
+                labels.append(txt)
+
+        meta = {
+            'format': 'MRC',
+            'mrc_mode': int(h.mode),
+            'cell_a': (float(h.cella.x), float(h.cella.y), float(h.cella.z)),
+            'voxel_angstrom': (float(vs.z), float(vs.y), float(vs.x)),
+            'labels': labels,
+        }
+
+    return data, (vz, vy, vx), meta
 
 
 def _extract_tiff_meta(f):
@@ -81,6 +123,13 @@ def print_info(data, voxel, meta):
     elif ndim == 4:
         print(f"  4D shape    : {data.shape} (likely Z×C×Y×X or T×Z×Y×X)")
         print(f"  Voxel (µm)  : {voxel[0]:.4f} × {voxel[1]:.4f} × {voxel[2]:.4f}")
+    if meta.get('format') == 'MRC':
+        print(f"  MRC mode    : {meta.get('mrc_mode')} "
+              f"(0=int8, 1=int16, 2=float32, 6=uint16)")
+        va = meta.get('voxel_angstrom', (0, 0, 0))
+        print(f"  Voxel (Å)   : {va[0]:.1f} × {va[1]:.1f} × {va[2]:.1f}")
+        for label in meta.get('labels', []):
+            print(f"  Label       : {label}")
     print(f"  Intensity   : min={data.min():.1f}, max={data.max():.1f}, "
           f"mean={data.mean():.1f}, std={data.std():.1f}")
     print(f"  Memory      : {data.nbytes / 1e6:.1f} MB")

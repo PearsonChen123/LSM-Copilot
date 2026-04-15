@@ -25,7 +25,8 @@ Give it a microscopy file + a natural language description of what you want to a
 | **Particle Tracking** | Trackpy-based 2D/3D tracking, MSD, diffusion coefficients |
 | **Image Enhancement** | Denoising, deconvolution, Cellpose3 restoration, CLAHE |
 | **Batch Processing** | Process entire directories with consistent pipelines |
-| **Report Generation** | Auto-generate structured scientific reports with figures |
+| **Fluorescence Preservation** | GFP/fluorescent protein signal retention analysis, single-sample or paired comparison with statistics |
+| **Report Generation** | Web-search-enhanced scientific reports with literature context |
 
 ## Supported File Formats
 
@@ -36,6 +37,7 @@ Give it a microscopy file + a natural language description of what you want to a
 | Leica LIF | `.lif` | Yes |
 | OME-TIFF | `.ome.tif` | Yes |
 | Plain TIFF | `.tif` | Manual voxel input |
+| MRC/MRC2000 | `.mrc`, `.mrcs`, `.map`, `.rec`, `.st` | Yes (voxel from header, Å→µm) |
 
 ---
 
@@ -76,12 +78,11 @@ In Cursor, simply describe what you want:
 "Help me analyze this LSM file, I want to detect all crystalline domains and measure their sizes"
 ```
 
-The AI agent will:
-1. Ask you for the file path and analysis goal
-2. Select the appropriate analysis pipeline
-3. Run the analysis with optimal parameters
-4. Generate CSV data + publication-quality figures
-5. Provide scientific interpretation
+The AI agent follows a **3-phase workflow**:
+
+1. **Phase 1 — Analyze**: Load data, run segmentation/intensity/spatial analysis, generate figures & CSV
+2. **Phase 2 — Follow-up**: Ask for sample context, offer report generation
+3. **Phase 3 — Report**: Search the web for literature context, generate publication-quality report with references
 
 ### Direct Tool Usage (CLI)
 
@@ -123,7 +124,9 @@ lsm-copilot/
 │   ├── spatial.md        #   Spatial distribution statistics
 │   ├── tracking.md       #   Particle tracking (time-lapse)
 │   ├── enhancement.md    #   Image enhancement & restoration
-│   └── report.md         #   Scientific report generation
+│   ├── followup.md       #   Post-analysis follow-up interaction
+│   ├── fluorescence_preservation.md  # GFP/fluorescence retention analysis
+│   └── report.md         #   Web-search-enhanced report generation
 ├── tools/                # Python analysis scripts
 │   ├── gui_threshold.py  #   Interactive 3D segmentation GUI
 │   ├── file_reader.py    #   Universal microscopy file reader
