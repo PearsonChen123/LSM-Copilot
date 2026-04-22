@@ -32,14 +32,17 @@ Interpret `layout_guess` and `routing_hint`:
 | `3D_multichannel_or_slice_wise_2D` | 3D + optional 2D per-Z or MIP for QC |
 | `ASK_USER_THEN_BRANCH` | Ask whether dim0 is **Z** or **C** |
 
-### 3. Search the web (if user needs robust 2D cells / nuclei)
+### 3. Search the web for methods (default: before running the main pipeline)
 
-Good queries:
+When the user’s **分析目标** is clear enough and you have **`routing_hint` / `layout_guess`**, search **before** committing to scripts — not only before report writing.
 
-- `"cellpose 2D confocal segmentation installation"`
-- `"scikit-image watershed nuclei segmentation"`
+Build queries from **goal + modality + layout**, e.g.:
 
-If deep learning is appropriate, prefer **Cellpose** ([GitHub](https://github.com/MouseLand/cellpose), [docs](https://cellpose.readthedocs.io/)) — BSD-3-Clause, `pip install cellpose`.
+- `"[goal e.g. nuclear segmentation] confocal Z-stack python"` + mention `ZCYX` vs `ZYX` if relevant
+- `"object-based colocalization multichannel 3D fluorescence"`
+- `"cellpose 2D confocal segmentation installation"` / `"scikit-image watershed nuclei segmentation"` when segmentation is the goal
+
+If deep learning is appropriate, prefer **Cellpose** ([GitHub](https://github.com/MouseLand/cellpose), [docs](https://cellpose.readthedocs.io/)) — BSD-3-Clause, `pip install cellpose` — but **confirm with search** that it fits the data type (e.g. 2D vs 3D, nuclei vs cyto).
 
 ### 4. Open-source compliance
 
@@ -47,7 +50,11 @@ If deep learning is appropriate, prefer **Cellpose** ([GitHub](https://github.co
 - Optional local clone: `bash scripts/clone_cellpose.sh` → read `third_party/cellpose/LICENSE`.
 - Do not commit large vendored trees; `third_party/cellpose/` is gitignored by default.
 
-### 5. Run 2D analysis
+### 5. Choose tools and run analysis
+
+Use **§3** web-search conclusions + the **§2** routing table to pick `analyze_2d.py`, 3D tools, or other libraries, then execute.
+
+### 6. Run 2D analysis (when applicable)
 
 Classical (no PyTorch):
 
@@ -79,6 +86,7 @@ python3 ${SKILL_DIR}/tools/analyze_2d.py image.tif --cellpose --diameter 30 --ch
 
 ## Anti-Patterns
 
+- Do NOT skip the **§3 method search** after requirements and `routing_hint` are known (unless user forbids network).
 - Do NOT assume ZCYX vs CYX without metadata — use `dimension_detect.py` + user confirmation when ambiguous.
 - Do NOT bundle Cellpose weights into the skill git repo.
 - Do NOT claim Cellpose results without citing upstream when writing papers.

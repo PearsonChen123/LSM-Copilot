@@ -121,7 +121,7 @@ lsm-copilot/
 ├── third_party/          # Not committed by default; see third_party/README.md
 ├── prompts/              # Analysis workflow templates
 │   ├── intake.md         #   File & goal determination
-│   ├── dimension_routing.md  # 2D vs 3D routing + Cellpose integration
+│   ├── dimension_routing.md  # 2D vs 3D routing; method web search before pipeline; Cellpose
 │   ├── segmentation.md   #   3D object segmentation
 │   ├── intensity.md      #   Fluorescence intensity analysis
 │   ├── colocalization.md #   Multi-channel colocalization

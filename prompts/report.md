@@ -6,6 +6,14 @@ Only when the user explicitly requests a report (asked in Phase 2 follow-up). Ne
 
 ---
 
+## Relationship to Phase 1 (method discovery)
+
+Phase 1 **Step 2c** in `SKILL.md`: after user requirements are clear and **data type / layout** are known (`file_reader`, `dimension_detect`), the agent should **search the web to choose analysis methods and libraries** before running the main pipeline.
+
+**This document** covers searches **before writing the narrative report**: literature, reference values, and methodological wording. The two steps answer different questions (**how to analyze** vs **how to interpret and cite**); both may use web search, with different query focus.
+
+---
+
 ## Before Writing: Search the Web (MANDATORY)
 
 **You MUST search the web before writing any report.** This is not optional.
