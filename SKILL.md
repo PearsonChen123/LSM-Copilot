@@ -65,12 +65,28 @@ Supports: `.lsm` (auto voxel), `.czi`, `.lif`, `.tif` (needs manual voxel), `.mr
 
 Show the user: dimensions, voxel size, intensity range, a representative slice. Ask if it looks right.
 
+### Step 2b: Route 2D vs 3D (NEW)
+
+After loading, **detect whether the array is 2D, 3D, or multichannel 4D** before choosing tools:
+
+```bash
+python3 ${SKILL_DIR}/tools/dimension_detect.py <path> --json
+```
+
+- If routing hints **`2D_*`** → run `${SKILL_DIR}/tools/analyze_2d.py` (classical Otsu + watershed + `regionprops`, or optional **`--cellpose`** after `pip install cellpose` per [Cellpose docs](https://cellpose.readthedocs.io/)).
+- If **`3D_*`** → keep existing 3D tools (`gui_threshold.py`, custom 3D scripts). Optionally add **2D QC** on a single Z-slice or MIP: `analyze_2d.py --mode slice` or `--mode mip`.
+
+Read `${SKILL_DIR}/prompts/dimension_routing.md` for the full checklist (ask user → detect → web search → optional Cellpose).
+
+**Open source**: Cellpose is the default recommended DL 2D/3D segmenter ([MouseLand/cellpose](https://github.com/MouseLand/cellpose), BSD-3-Clause). Prefer `pip install cellpose`; optional shallow clone: `bash ${SKILL_DIR}/scripts/clone_cellpose.sh` (see `third_party/README.md`).
+
 ### Step 3: Choose Analysis Approach
 
 #### Known Analysis Types
 
 | Goal | Start Here | When to Search Further |
 |------|-----------|----------------------|
+| **Detect & measure objects (2D)** | `${SKILL_DIR}/tools/analyze_2d.py` — classical CV; optional `--cellpose` | Dense / irregular cells → `pip install cellpose` or StarDist; see web search |
 | **Detect & measure objects (3D)** | `${SKILL_DIR}/tools/gui_threshold.py` — interactive Otsu-based GUI | If objects are touching, irregularly shaped, or classical method fails → search for Cellpose, StarDist, or other DL methods |
 | **Fluorescence intensity** | `${SKILL_DIR}/tools/intensity_profiler.py` — Z-depth profile & correction | If user needs FRET, FLIM, or ratiometric analysis → search for specialized tools |
 | **Colocalization** | `${SKILL_DIR}/tools/coloc_analyzer.py` — Pearson, Manders | If user needs object-based coloc or 3D coloc → search for latest approaches |

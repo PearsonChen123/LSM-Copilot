@@ -116,8 +116,12 @@ lsm-copilot/
 ├── README.md             # This file
 ├── requirements.txt      # Python dependencies
 ├── LICENSE               # MIT License
+├── scripts/              # Optional vendor clone helpers
+│   └── clone_cellpose.sh #   Shallow-clone Cellpose into third_party/ (local)
+├── third_party/          # Not committed by default; see third_party/README.md
 ├── prompts/              # Analysis workflow templates
 │   ├── intake.md         #   File & goal determination
+│   ├── dimension_routing.md  # 2D vs 3D routing + Cellpose integration
 │   ├── segmentation.md   #   3D object segmentation
 │   ├── intensity.md      #   Fluorescence intensity analysis
 │   ├── colocalization.md #   Multi-channel colocalization
@@ -128,6 +132,8 @@ lsm-copilot/
 │   ├── fluorescence_preservation.md  # GFP/fluorescence retention analysis
 │   └── report.md         #   Web-search-enhanced report generation
 ├── tools/                # Python analysis scripts
+│   ├── dimension_detect.py # Infer 2D vs 3D / ZCYX layout + routing hint
+│   ├── analyze_2d.py     # 2D segmentation + CSV (classical or Cellpose)
 │   ├── gui_threshold.py  #   Interactive 3D segmentation GUI
 │   ├── file_reader.py    #   Universal microscopy file reader
 │   ├── intensity_profiler.py   # Z-depth intensity analysis
