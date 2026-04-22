@@ -43,10 +43,14 @@ def load_plane(path, voxel, mode, z_index, channel):
             plane = data[int(channel)].astype(np.float32)
             ch_tag = "C%d" % int(channel)
         else:
-            zi = int(z_index) if z_index is not None else a // 2
-            zi = max(0, min(zi, a - 1))
-            plane = data[zi].astype(np.float32)
-            ch_tag = "Z%d" % zi
+            if mode == "mip":
+                plane = data.max(axis=0).astype(np.float32)
+                ch_tag = "MIP_ZYX"
+            else:
+                zi = int(z_index) if z_index is not None else a // 2
+                zi = max(0, min(zi, a - 1))
+                plane = data[zi].astype(np.float32)
+                ch_tag = "Z%d" % zi
     elif data.ndim == 4:
         z, c, y, x = data.shape
         if mode == "mip":
