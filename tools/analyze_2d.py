@@ -89,8 +89,8 @@ def segment_classical(plane, min_area=20, max_area=50000):
         if p.area < min_area or p.area > max_area:
             continue
         uid += 1
-        im = getattr(p, "image_intensity", None) or p.intensity_image
-        mean_i = float(getattr(p, "intensity_mean", p.mean_intensity))
+        im = p.image_intensity if hasattr(p, "image_intensity") else p.intensity_image
+        mean_i = float(p.intensity_mean if hasattr(p, "intensity_mean") else p.mean_intensity)
         rows.append({
             "id": uid,
             "y": float(p.centroid[0]),
@@ -114,8 +114,8 @@ def segment_cellpose(plane, diameter, model_type="cyto2"):
     props = regionprops(masks.astype(np.int32), intensity_image=plane)
     rows = []
     for i, p in enumerate(props, start=1):
-        im = getattr(p, "image_intensity", None) or p.intensity_image
-        mean_i = float(getattr(p, "intensity_mean", p.mean_intensity))
+        im = p.image_intensity if hasattr(p, "image_intensity") else p.intensity_image
+        mean_i = float(p.intensity_mean if hasattr(p, "intensity_mean") else p.mean_intensity)
         rows.append({
             "id": i,
             "y": float(p.centroid[0]),
