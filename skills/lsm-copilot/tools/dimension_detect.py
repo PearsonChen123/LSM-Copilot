@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-# Allow running from repo root or tools/
+# Allow running from the skill root or tools/
 _TOOLS = Path(__file__).resolve().parent
 if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
@@ -103,11 +103,11 @@ def main():
     print("=" * 60)
     print("\nNext steps:")
     if info["routing_hint"].startswith("2D"):
-        print("  → Run: python3 tools/analyze_2d.py <path> [--channel 0]")
+        print("  → Run: python3 ${SKILL_DIR}/tools/analyze_2d.py <path> [--channel 0]")
     elif "3D" in info["routing_hint"] or "slice" in info["routing_hint"]:
-        print("  → 3D: gui_threshold.py / custom 3D pipeline")
-        print("  → Optional 2D slice / MIP: analyze_2d.py --mode slice --z-index N")
-        print("           or analyze_2d.py --mode mip --channel C")
+        print("  → 3D: ${SKILL_DIR}/tools/gui_threshold.py / custom 3D pipeline")
+        print("  → Optional 2D slice / MIP: ${SKILL_DIR}/tools/analyze_2d.py --mode slice --z-index N")
+        print("           or ${SKILL_DIR}/tools/analyze_2d.py --mode mip --channel C")
     else:
         print("  → Ask user for Z vs channel order, then re-run.")
 

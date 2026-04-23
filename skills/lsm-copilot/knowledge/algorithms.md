@@ -1,6 +1,6 @@
 # Algorithm Selection Guide
 
-This is a reference for choosing approaches. **Always verify with a web search for the latest tools.**
+This is a reference for choosing approaches. **Always verify with `ai4s-web-search` for the latest tools before committing to a pipeline.**
 
 ## Segmentation: Classical vs Deep Learning
 
@@ -24,3 +24,5 @@ This is a reference for choosing approaches. **Always verify with a web search f
 ## Rule of Thumb
 
 Start simple (classical). If results are poor after reasonable parameter tuning, escalate to deep learning. Don't jump to DL just because it exists — classical methods are faster, more interpretable, and don't need GPUs.
+
+If the best method requires a dependency that is not already supported, use the controlled extension gate in `prompts/extension.md`: verify evidence/license/install/API first, ask for approval, add a thin adapter, and smoke-test before full analysis.

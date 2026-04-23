@@ -44,15 +44,17 @@ Build queries from **goal + modality + layout**, e.g.:
 
 If deep learning is appropriate, prefer **Cellpose** ([GitHub](https://github.com/MouseLand/cellpose), [docs](https://cellpose.readthedocs.io/)) — BSD-3-Clause, `pip install cellpose` — but **confirm with search** that it fits the data type (e.g. 2D vs 3D, nuclei vs cyto).
 
-### 4. Open-source compliance
+### 4. Controlled extension / install decision
 
 - **Prefer `pip install cellpose`** per upstream docs.
 - Optional local clone: `bash scripts/clone_cellpose.sh` → read `third_party/cellpose/LICENSE`.
 - Do not commit large vendored trees; `third_party/cellpose/` is gitignored by default.
+- For any tool that is not already supported by the built-in scripts, follow `prompts/extension.md` before installing, cloning, downloading weights, or adding an adapter.
+- Present the selected tool, license, install command, adapter path, smoke test, and fallback before asking for approval.
 
 ### 5. Choose tools and run analysis
 
-Use **§3** web-search conclusions + the **§2** routing table to pick `analyze_2d.py`, 3D tools, or other libraries, then execute.
+Use **§3** web-search conclusions + the **§2** routing table to pick `analyze_2d.py`, 3D tools, or an approved extension adapter, then execute.
 
 ### 6. Run 2D analysis (when applicable)
 

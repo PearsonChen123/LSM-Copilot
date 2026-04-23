@@ -26,3 +26,5 @@ Ask the user: what's wrong with your image?
 ## Do NOT Hardcode Methods
 
 Enhancement is the most rapidly evolving area of microscopy image analysis. What was best practice 6 months ago may be outdated. Always verify with a web search.
+
+If the chosen restoration method requires a new package, model, or repo clone, follow `prompts/extension.md` before installation or integration.

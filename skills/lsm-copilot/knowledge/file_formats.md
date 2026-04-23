@@ -20,7 +20,7 @@ For plain TIFF without metadata, you **must** ask the user for:
 ## Key Points
 
 - `tifffile` handles most formats. Always try it first.
-- For vendor-specific formats (CZI, LIF, ND2), search for the recommended Python reader if `tifffile` doesn't work.
+- For vendor-specific formats (CZI, LIF, ND2), request `ai4s-web-search` for the recommended Python reader if `tifffile` doesn't work.
 - The `bioformats` / `python-bioformats` package can read almost anything but requires Java. Use as last resort.
 - **MRC format** is common in cryo-EM and electron tomography, but also used for converted confocal/fluorescence stacks. The `mrcfile` package reads MRC2000 and older formats. Voxel sizes are stored in Ångströms in the header — divide by 10,000 to get µm. Extensions include `.mrc`, `.mrcs` (image stacks), `.map` (density maps), `.rec` (tomographic reconstructions), and `.st` (tilt series).
-- **Bio-Formats** (Java) is the gold standard for format support. The Python wrapper `python-bioformats` or `pims.Bioformats` can be used if nothing else works — search for current installation instructions.
+- **Bio-Formats** (Java) is the gold standard for format support. The Python wrapper `python-bioformats` or `pims.Bioformats` can be used if nothing else works — verify current installation instructions first, then use the controlled extension gate before adding the dependency.

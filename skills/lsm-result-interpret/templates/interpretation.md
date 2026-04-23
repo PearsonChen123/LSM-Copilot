@@ -1,6 +1,6 @@
 # Interpretation (template)
 
-> Use this template as the response skeleton. Do not add sections outside this list.
+> Use this template as the response skeleton. Do not add sections outside this list. Before filling it, make sure `ai4s-web-search` has supplied relevant literature/reference evidence unless the user disabled network access.
 
 ## Interpretation
 

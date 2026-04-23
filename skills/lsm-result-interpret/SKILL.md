@@ -1,12 +1,12 @@
 ---
 name: lsm-result-interpret
-description: "Result interpretation skill for fluorescence/confocal microscopy. Use when analysis outputs already exist and the user wants a grounded discussion of what the numbers mean — not a full manuscript."
-version: "0.1.0"
+description: "Result interpretation skill for fluorescence/confocal microscopy. Use when analysis outputs already exist and the user wants literature-grounded discussion of what the numbers mean — not a full manuscript."
+version: "0.2.0"
 ---
 
 # LSM Result Interpret
 
-A focused skill that turns **quantitative analysis outputs** + **retrieved evidence** into a **structured interpretation** of what the results mean biologically / physically. It deliberately replaces the old "generate full report" path: no manuscript boilerplate, no fabricated narrative — only evidence-backed discussion.
+A focused skill that turns **quantitative analysis outputs** + **retrieved literature/reference evidence** into a **structured interpretation** of what the results mean biologically / physically. It deliberately replaces the old "generate full report" path: no manuscript boilerplate, no fabricated narrative — only evidence-backed discussion.
 
 This skill **consumes**:
 
@@ -23,7 +23,7 @@ It **produces**:
 It does **not**:
 
 - Run any computation of its own.
-- Perform web search by itself (delegate to `ai4s-web-search`).
+- Perform raw web retrieval by itself; it requests `ai4s-web-search` when literature/reference evidence is missing or thin.
 - Draft an end-to-end paper / REPORT.
 
 ---
@@ -62,16 +62,16 @@ evidence_pack:
   # OR: a note requesting that this skill invoke ai4s-web-search first.
 ```
 
-If `evidence_pack` is absent and the interpretation requires grounding (e.g., comparing to reference values, naming a technique, citing a method), **call `ai4s-web-search` first** (or ask the caller to run it) before writing the interpretation.
+If `evidence_pack` is absent or insufficient and the interpretation requires grounding (e.g., comparing to reference values, naming a technique, citing a method, judging whether a value is plausible), **request `ai4s-web-search` first** before writing the interpretation.
 
 ---
 
 ## Workflow (Skill Flow)
 
 ```
-lsm-copilot  ──►  analysis artifacts
+lsm-copilot  ──►  analysis artifacts + method evidence
                        │
-ai4s-web-search ──►    │    evidence pack
+ai4s-web-search ──►    │    reference values / literature evidence
                        ▼
                lsm-result-interpret  ──►  structured interpretation
 ```
@@ -85,7 +85,28 @@ Read artifacts and confirm:
 - Figures exist at the given paths (do not fabricate filenames).
 - Missing items go in `caveats`, not silently ignored.
 
-### 2. Evidence alignment
+### 2. Literature/reference search
+
+Before interpreting results, ensure the evidence pack covers:
+
+- Method citations when the method affects interpretation.
+- Reference values or reported ranges for comparable samples when making plausibility claims.
+- Treatment / preparation effects when discussing preservation, quenching, clearing, fixation, or artifacts.
+- Known caveats for the measurement type.
+
+If evidence is missing, request `ai4s-web-search`:
+
+```yaml
+purpose: reference_values
+goal: "<interpret the analysis outputs for the stated sample/aim>"
+domain_descriptors: ["fluorescence microscopy", "<sample>", "<measurement>", "<treatment>"]
+constraints: ["peer-reviewed or official docs preferred"]
+k: 3
+```
+
+For method-specific claims, use `purpose: citation_grounding`.
+
+### 3. Evidence alignment
 
 For each headline number in the analysis, pair it with **zero or more evidence items** from the `evidence_pack`:
 
@@ -93,11 +114,11 @@ For each headline number in the analysis, pair it with **zero or more evidence i
 - **Discrepant**: differs from cited value; explain plausible causes (biology, preparation, analysis choice).
 - **Ungrounded**: no citation available; mark `"to our knowledge"` rather than fabricating one.
 
-### 3. Compose interpretation
+### 4. Compose interpretation
 
 Follow the **Output Structure** below. Keep it short; interpretation, not exposition.
 
-### 4. Produce next steps
+### 5. Produce next steps
 
 List 2–5 **specific, actionable** follow-ups (e.g. "acquire a paired control fixed with PFA 4%", "run object-based colocalization on ch2 × ch3"). Avoid generic suggestions.
 
@@ -140,6 +161,7 @@ No other sections. No "Abstract", no "Title", no "Acquisition Parameters" table 
 ## Tone and Standards
 
 - **Claims must be grounded**. Every comparative statement links to either (a) a cited URL from the evidence pack or (b) explicit wording `"to our knowledge"`.
+- **Search before comparison**. Do not compare results with literature, reference ranges, or expected biology until `ai4s-web-search` has supplied relevant evidence or the user has explicitly disabled network use.
 - **No manuscript boilerplate**. Do not produce "Background / Methods / Results / Discussion" as a full narrative.
 - **Units always physical**. Reject interpretation written in pixels.
 - **Honor the user's language**. If the user writes in Chinese, respond in Chinese; the section headers above may be localized, but keep the same structure.
@@ -149,7 +171,7 @@ No other sections. No "Abstract", no "Title", no "Acquisition Parameters" table 
 
 ## Anti-Patterns
 
-- Do NOT invent citations when `evidence_pack` is empty — request a search round instead.
+- Do NOT invent citations when `evidence_pack` is empty or thin — request a search round instead.
 - Do NOT hide disagreements between measurement and literature; surface them as `discrepant`.
 - Do NOT expand into a full paper draft; that is out of scope.
 - Do NOT rerun analysis here; hand back to `lsm-copilot` if new numbers are needed.

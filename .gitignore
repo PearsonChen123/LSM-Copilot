@@ -1,4 +1,7 @@
 output/
+skills/lsm-copilot/output/
+.cursor/
+.codex
 __pycache__/
 *.pyc
 .DS_Store
@@ -6,5 +9,5 @@ __pycache__/
 dist/
 build/
 
-# Optional vendored upstream (run scripts/clone_cellpose.sh locally)
-third_party/cellpose/
+# Optional vendored upstream (run skills/lsm-copilot/scripts/clone_cellpose.sh locally)
+skills/lsm-copilot/third_party/cellpose/

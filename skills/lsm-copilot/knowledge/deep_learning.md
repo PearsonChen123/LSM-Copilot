@@ -1,6 +1,6 @@
 # Deep Learning Tools for Microscopy
 
-**WARNING**: This field evolves extremely fast. Always search the web for the latest version, API, and best practices before using any of these tools.
+**WARNING**: This field evolves extremely fast. Always use `ai4s-web-search` for the latest version, API, install notes, license, and best practices before using any of these tools.
 
 ## Tools Worth Knowing About
 
@@ -23,3 +23,4 @@
 - Always check if pretrained models exist before training from scratch
 - GPU dramatically speeds up inference; check availability with `torch.cuda.is_available()`
 - Model APIs change between versions — **always read the current documentation**
+- Any new DL dependency must pass the controlled extension gate in `prompts/extension.md` before installation or integration
