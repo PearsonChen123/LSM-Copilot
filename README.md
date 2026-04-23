@@ -1,110 +1,132 @@
 # LSM-Copilot
 
-> **Fluorescence & Confocal Microscopy Image Analysis AI Agent**
+> **A suite of collaborating Cursor Agent skills for fluorescence / confocal microscopy image analysis.**
 
-License: MIT Python 3.9+ Cursor Agent Skill
-
-Your microscopy data is too complex to analyze manually?  
-Your Z-stack has hundreds of slices and you need 3D quantification?  
-Your multi-channel images need colocalization but you don't know ImageJ macros?  
-
-**Let AI be your microscopy analysis copilot.**
-
-Give it a microscopy file + a natural language description of what you want to analyze, and get **publication-ready quantification, figures, and CSV data**.
+LSM-Copilot is **not a single skill**. It is a **skill suite** plus the agent's main loop. The agent observes the user's request, decides which skill to invoke, routes artifacts between skills, and returns a final answer. Each skill has a narrow, well-defined job and a clean handoff contract.
 
 ---
 
-## Features
+## Skill Suite
 
-| Module | Capability |
-|--------|-----------|
-| **3D Segmentation** | Interactive GUI with Otsu threshold + 3D connected components, or Cellpose3/StarDist deep learning |
-| **Intensity Analysis** | Z-depth profiling, laser attenuation correction, ROI quantification, photobleaching correction |
-| **Colocalization** | Pearson, Manders, Li's ICQ, scatter plots, merged overlays |
-| **Spatial Statistics** | Nearest neighbor distance, clustering analysis, Z-segment statistics, size distribution |
-| **Particle Tracking** | Trackpy-based 2D/3D tracking, MSD, diffusion coefficients |
-| **Image Enhancement** | Denoising, deconvolution, Cellpose3 restoration, CLAHE |
-| **Batch Processing** | Process entire directories with consistent pipelines |
-| **Fluorescence Preservation** | GFP/fluorescent protein signal retention analysis, single-sample or paired comparison with statistics |
-| **Report Generation** | Web-search-enhanced scientific reports with literature context |
+| Skill | Scope | Owns |
+|-------|-------|------|
+| `lsm-copilot` (this folder) | Microscopy **data analysis** | Data loading, layout inference, pipeline selection, computation, QC, artifacts |
+| `ai4s-web-search` (generic) | **Grounded retrieval** | Building queries, executing web search, returning a structured evidence pack |
+| `lsm-result-interpret` | **Result interpretation** | Turning artifacts + evidence into a structured discussion (no full reports) |
+
+Sibling skills live at `.cursor/skills/ai4s-web-search/` and `.cursor/skills/lsm-result-interpret/`.
+
+---
+
+## Agent Main Loop (how the skills compose)
+
+The agent runs a simple loop. At each step it picks the skill that best fits the current state; skills never call each other directly — the agent does the routing.
+
+```
+observe user request
+│
+├─► does it describe raw data / an analysis task?
+│     └─► invoke  lsm-copilot
+│           ├── clarify goal
+│           ├── load + inspect data
+│           ├── infer array layout (2D / volumetric / multichannel / mixed)
+│           ├── request evidence: invoke ai4s-web-search (purpose=method_discovery)
+│           ├── choose pipeline grounded in the evidence pack
+│           ├── run analysis, emit figures + tables + JSON summary
+│           └── collect experimental context (follow-up)
+│
+├─► does the user want interpretation / discussion of existing results?
+│     ├── if reference values are needed: invoke ai4s-web-search (purpose=reference_values)
+│     └── invoke lsm-result-interpret with {artifacts, context, evidence_pack}
+│
+└─► does the user want grounded retrieval only?
+      └─► invoke ai4s-web-search directly
+```
+
+The orchestration logic lives in the **agent**, not in any one skill. Each skill's `SKILL.md` documents only its own scope, inputs, and outputs.
+
+---
+
+## Scope of This Skill (`lsm-copilot`)
+
+This skill handles **Phase-1 analysis**:
+
+- Universal file loading for `.lsm`, `.czi`, `.lif`, `.tif`, `.mrc` family.
+- Layout inference (2D / volumetric stack / multichannel / mixed) with a routing hint.
+- Pipeline selection backed by the evidence pack from `ai4s-web-search`.
+- Quantification: 2D / 3D object detection, intensity profiling, colocalization, spatial statistics, batch processing, fluorescence-preservation task module.
+- Publication-quality figures, CSV tables, and JSON summaries with physical units.
+
+It does **not** perform web search and does **not** draft narrative reports.
+
+---
 
 ## Supported File Formats
 
-| Format | Extension | Auto-Metadata |
+| Format | Extension | Auto metadata |
 |--------|-----------|---------------|
-| Zeiss LSM | `.lsm` | Yes (voxel, channels) |
-| Zeiss CZI | `.czi` | Yes |
-| Leica LIF | `.lif` | Yes |
-| OME-TIFF | `.ome.tif` | Yes |
-| Plain TIFF | `.tif` | Manual voxel input |
-| MRC/MRC2000 | `.mrc`, `.mrcs`, `.map`, `.rec`, `.st` | Yes (voxel from header, Å→µm) |
+| Zeiss LSM | `.lsm` | yes (voxel, channels) |
+| Zeiss CZI | `.czi` | yes |
+| Leica LIF | `.lif` | yes |
+| OME-TIFF | `.ome.tif` | yes |
+| Plain TIFF | `.tif` | voxel to be provided |
+| MRC family | `.mrc`, `.mrcs`, `.map`, `.rec`, `.st` | yes (voxel from header, Å → µm) |
 
 ---
 
 ## Install
 
-### As Cursor Agent Skill (recommended)
+### As Cursor agent skills (recommended)
+
+Place all three skills under a `skills/` directory that Cursor scans:
 
 ```bash
-# Project-level (shared with collaborators)
 mkdir -p .cursor/skills
-git clone https://github.com/YOUR_USERNAME/lsm-copilot .cursor/skills/lsm-copilot
-
-# Or global (available in all projects)
-git clone https://github.com/YOUR_USERNAME/lsm-copilot ~/.cursor/skills/lsm-copilot
+git clone <repo-url> .cursor/skills/lsm-copilot
+git clone <repo-url-for-search>  .cursor/skills/ai4s-web-search
+git clone <repo-url-for-interp>  .cursor/skills/lsm-result-interpret
 ```
 
-### Dependencies
+(If the three skills ship together, copy each subfolder into `.cursor/skills/`.)
+
+### Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-For deep learning segmentation (optional):
+Optional deep-learning segmenters (only if the evidence pack recommends them):
+
 ```bash
-pip install cellpose        # Cellpose3
-pip install stardist        # StarDist
-pip install "napari[all]"   # napari viewer
-pip install trackpy pims    # particle tracking
+pip install cellpose
+pip install stardist
 ```
 
 ---
 
-## Usage
+## Handoff Contracts (quick reference)
 
-In Cursor, simply describe what you want:
+### `lsm-copilot` → `ai4s-web-search`
 
+```yaml
+purpose:            method_discovery | reference_values | tool_verification | citation_grounding
+goal:               "<one-sentence analysis goal>"
+domain_descriptors: ["fluorescence microscopy", "<layout tag>", "<modality tags>"]
+constraints:        ["open source", "python", "<others>"]
+k:                  3
 ```
-"Help me analyze this LSM file, I want to detect all crystalline domains and measure their sizes"
+
+Returns: a JSON evidence pack (see `ai4s-web-search/templates/evidence_pack.md`).
+
+### `lsm-copilot` → `lsm-result-interpret`
+
+```yaml
+analysis_artifacts:    { summary, figures, parameters, units }
+experimental_context:  { sample, channels, treatments, aim, comparators }
+evidence_pack:         <JSON from ai4s-web-search>
 ```
 
-The AI agent follows a **3-phase workflow**:
-
-1. **Phase 1 — Analyze**: Load data, run segmentation/intensity/spatial analysis, generate figures & CSV
-2. **Phase 2 — Follow-up**: Ask for sample context, offer report generation
-3. **Phase 3 — Report**: Search the web for literature context, generate publication-quality report with references
-
-### Direct Tool Usage (CLI)
-
-```bash
-# File info
-python tools/file_reader.py image.lsm --info
-
-# Interactive 3D segmentation GUI
-python tools/gui_threshold.py image.lsm
-
-# Z-depth intensity profile
-python tools/intensity_profiler.py image.lsm --mode z-profile
-
-# Colocalization (2-channel)
-python tools/coloc_analyzer.py image.lsm --ch1 0 --ch2 1
-
-# Spatial statistics (from segmentation CSV)
-python tools/spatial_stats.py spheres.csv --output-dir results/
-
-# Batch processing
-python tools/batch_processor.py --input-dir /data/ --pattern "*.lsm" --pipeline info
-```
+Returns: a structured interpretation block (see `lsm-result-interpret/templates/interpretation.md`).
 
 ---
 
@@ -112,67 +134,65 @@ python tools/batch_processor.py --input-dir /data/ --pattern "*.lsm" --pipeline 
 
 ```
 lsm-copilot/
-├── SKILL.md              # Agent Skill entry point & router
-├── README.md             # This file
-├── requirements.txt      # Python dependencies
-├── LICENSE               # MIT License
-├── scripts/              # Optional vendor clone helpers
-│   └── clone_cellpose.sh #   Shallow-clone Cellpose into third_party/ (local)
-├── third_party/          # Not committed by default; see third_party/README.md
-├── prompts/              # Analysis workflow templates
-│   ├── intake.md         #   File & goal determination
-│   ├── dimension_routing.md  # 2D vs 3D routing; method web search before pipeline; Cellpose
-│   ├── segmentation.md   #   3D object segmentation
-│   ├── intensity.md      #   Fluorescence intensity analysis
-│   ├── colocalization.md #   Multi-channel colocalization
-│   ├── spatial.md        #   Spatial distribution statistics
-│   ├── tracking.md       #   Particle tracking (time-lapse)
-│   ├── enhancement.md    #   Image enhancement & restoration
-│   ├── followup.md       #   Post-analysis follow-up interaction
-│   ├── fluorescence_preservation.md  # GFP/fluorescence retention analysis
-│   └── report.md         #   Web-search-enhanced report generation
-├── tools/                # Python analysis scripts
-│   ├── dimension_detect.py # Infer 2D vs 3D / ZCYX layout + routing hint
-│   ├── analyze_2d.py     # 2D segmentation + CSV (classical or Cellpose)
-│   ├── gui_threshold.py  #   Interactive 3D segmentation GUI
-│   ├── file_reader.py    #   Universal microscopy file reader
-│   ├── intensity_profiler.py   # Z-depth intensity analysis
-│   ├── coloc_analyzer.py       # Colocalization metrics
-│   ├── spatial_stats.py        # Spatial statistics
-│   └── batch_processor.py      # Batch processing
-├── knowledge/            # Domain knowledge (RAG)
-│   ├── algorithms.md     #   Algorithm selection guide
-│   ├── file_formats.md   #   File format reference
-│   ├── metrics.md        #   Quantification metrics
-│   └── deep_learning.md  #   DL tools (Cellpose, StarDist, napari)
-└── output/               # Generated results (gitignored)
+├── SKILL.md                          # Agent-facing scope and workflow for this skill
+├── README.md                         # This file
+├── requirements.txt                  # Python dependencies
+├── LICENSE
+├── scripts/                          # Optional vendor-clone helpers
+├── third_party/                      # Not committed by default
+├── prompts/                          # Task-facing workflow templates
+│   ├── intake.md
+│   ├── dimension_routing.md
+│   ├── segmentation.md
+│   ├── intensity.md
+│   ├── colocalization.md
+│   ├── spatial.md
+│   ├── tracking.md
+│   ├── enhancement.md
+│   ├── followup.md
+│   └── fluorescence_preservation.md
+├── tools/                            # Deterministic Python utilities
+│   ├── file_reader.py
+│   ├── dimension_detect.py
+│   ├── analyze_2d.py
+│   ├── gui_threshold.py
+│   ├── intensity_profiler.py
+│   ├── coloc_analyzer.py
+│   ├── spatial_stats.py
+│   └── batch_processor.py
+├── knowledge/                        # Domain reference material
+│   ├── algorithms.md
+│   ├── file_formats.md
+│   ├── metrics.md
+│   └── deep_learning.md
+├── archive/                          # Deprecated prompts (for provenance)
+└── output/                           # Generated artifacts (gitignored)
 ```
 
 ---
 
-## How It Works (for AI4S researchers)
+## Design Philosophy
 
-LSM-Copilot implements an **Agent Skill** architecture:
-
-1. **SKILL.md** acts as a router — it matches user intent to analysis pipelines
-2. **prompts/** contain domain-specific workflow templates that guide the AI through each analysis type
-3. **tools/** provide deterministic Python scripts that the AI agent calls as tools
-4. **knowledge/** serves as a RAG (Retrieval-Augmented Generation) knowledge base for algorithm selection and result interpretation
-
-This architecture separates **scientific domain knowledge** (prompts + knowledge) from **computational implementation** (tools), making it easy to extend to new analysis types.
+- **Narrow skills, orchestrating agent.** Each skill owns one responsibility; the agent composes them. This makes the system legible, testable, and easy to extend.
+- **Evidence before execution.** The agent should retrieve methodological evidence (`ai4s-web-search`) after the user's goal and data layout are known, and before locking a pipeline.
+- **Computation and interpretation are separate.** `lsm-copilot` produces numbers and figures; `lsm-result-interpret` turns them into evidence-backed discussion. No skill fabricates citations.
+- **Human-in-the-loop.** Ambiguous layouts, missing controls, or thin evidence trigger explicit questions to the user rather than silent assumptions.
+- **Physical units always.** Reports never appear in raw pixels.
 
 ---
 
 ## Contributing
 
-PRs welcome! To add a new analysis module:
+To add a new analysis module to this skill:
 
-1. Create `prompts/your_analysis.md` with the workflow template
-2. Create `tools/your_tool.py` with the Python implementation
-3. Add a route in `SKILL.md`
-4. Add domain knowledge in `knowledge/` if needed
-5. Update `requirements.txt` if new dependencies are introduced
+1. Add a workflow template under `prompts/`.
+2. Add a Python utility under `tools/`.
+3. Extend the pipeline selection guidance in `SKILL.md`.
+4. Update `knowledge/` if new domain references are needed.
+5. If the module depends on third-party tools, document license and install in `third_party/README.md`.
+
+To add a **new sibling skill** to the suite, create a new folder under `.cursor/skills/` with its own `SKILL.md` and a clear input/output contract, and reference it from the agent main-loop diagram above.
 
 ---
 
-MIT License
+MIT License.

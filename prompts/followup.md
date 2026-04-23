@@ -2,80 +2,86 @@
 
 ## When to Trigger
 
-**Immediately after Phase 1 analysis is complete** — before ending your turn.
-
-This is NOT optional. Every analysis session must include a follow-up.
+Immediately after Phase 1 analysis is complete, before ending the turn. This step is mandatory for every analysis session.
 
 ---
 
 ## What to Do
 
-### 1. Present Results Summary
+### 1. Present a concise results summary
 
-Give the user a concise summary of key findings:
-- Total objects detected
-- Key size/volume statistics (mean ± SD, median)
-- Notable spatial patterns
-- Any anomalies or concerns
+- Total objects detected (with units).
+- Headline statistics (mean ± SD, median) in physical units.
+- Notable spatial / intensity patterns.
+- Any anomalies or sanity-check concerns.
 
-### 2. Ask for Sample Context
+### 2. Collect experimental context
 
-Ask the user to provide (in whatever language they prefer):
+Ask for the following (phrase naturally in whatever language the user is using;
+the English version below is the canonical wording):
 
 ```
-分析已完成。为了更好地解读结果并生成报告，请提供以下信息：
+Analysis complete. To support downstream interpretation, please provide:
 
-1. **样本描述**：这是什么样本？
-   例如：小鼠脑组织切片、HeLa 细胞培养、聚合物薄膜...
-
-2. **实验背景**：这个实验要回答什么科学问题？
-   例如：验证 CryoChem 方法能否保留组织形态、比较两种固定方法...
-
-3. **标记/通道信息**：各荧光通道对应什么？
-   例如：ch1=DAPI(核), ch2=GFP-CRF, ch3=tdTomato, ch4=DRAQ5...
-
-4. **处理条件**：样本经过什么特殊处理？
-   例如：CryoChem 固定、4% PFA 固定、透明化处理、冷冻切片...
-
-5. **是否有对照/比较组？**
-   例如：有未处理的对照组、有另一种固定方法的对照...
-
-6. **是否需要我生成正式的分析报告 (REPORT.md)？**
+1. Sample description — e.g. mouse brain slice, HeLa culture, polymer film.
+2. Aim — what scientific question is this experiment answering?
+3. Channels / labels — e.g. ch1 = DAPI (nuclei), ch2 = GFP-X, ch3 = tdTomato.
+4. Treatments — e.g. CryoChem fixation, 4% PFA, clearing, cryosection.
+5. Controls / comparators — e.g. untreated control, alternative fixation.
+6. Do you want an interpretation (discussion of these results)?
+   If yes, the agent will invoke `lsm-result-interpret` using these artifacts
+   plus an evidence pack from `ai4s-web-search`.
 ```
 
-### 3. If User Provides Context but Declines Report
+### 3. If the user wants interpretation
 
-- Store the context for future reference in the session
-- Offer specific follow-up analysis based on context (e.g., "Since this is CryoChem tissue, would you like me to analyze fluorescence preservation in the GFP channel?")
+Do **not** write a full report in this skill. Instead:
 
-### 4. If User Wants a Report
+1. Make sure a relevant `evidence_pack` exists. If not, request `ai4s-web-search`
+   with `purpose: reference_values` or `citation_grounding`, using the sample /
+   treatment context collected above.
+2. Assemble the handoff payload for `lsm-result-interpret`:
 
-Proceed to Phase 3 (Report Generation):
-1. **Search the web** for relevant literature based on sample context
-2. **Generate the report** with literature-contextualized interpretation
-3. See `report.md` for formatting guidelines
+```yaml
+analysis_artifacts:
+  summary:    "<path or inline>"
+  figures:    ["<path 1>", "..."]
+  parameters: "<path or inline>"
+  units:      "µm | µm² | µm³ | AU"
+experimental_context:
+  sample:     "..."
+  channels:   {"ch1": "...", "ch2": "..."}
+  treatments: ["..."]
+  aim:        "..."
+  comparators: ["..."]
+evidence_pack: <JSON from ai4s-web-search>
+```
+
+3. Invoke `lsm-result-interpret` and return its structured interpretation to
+   the user. Do not paraphrase or expand it into a manuscript.
+
+### 4. If the user declines interpretation
+
+- Keep the collected context in the session state.
+- Offer a **specific** next-step analysis based on the context (e.g., "Since
+  this is CryoChem tissue with GFP, would you like a fluorescence-preservation
+  comparison?"). Avoid generic suggestions.
 
 ---
 
-## Special Follow-Up Triggers
+## Special Triggers
 
-### If user mentions fluorescent proteins (GFP, tdTomato, mCherry, etc.)
-
-Ask: "是否需要做荧光保留分析？这可以量化处理方法对荧光信号的影响。需要提供处理前后的数据，或者我可以将当前数据与文献参考值进行比较。"
-
-### If user has multiple channels
-
-Ask: "是否需要做通道间的共定位分析？"
-
-### If user has multiple files/conditions
-
-Ask: "是否需要做批量处理和条件间比较？"
+- **Fluorescent proteins mentioned** (GFP, tdTomato, mCherry, ...): offer a
+  preservation analysis; if no control is available, note that interpretation
+  will rely on literature values via `ai4s-web-search`.
+- **Multiple channels present**: offer colocalization.
+- **Multiple files / conditions**: offer batch processing and group comparison.
 
 ---
 
 ## Anti-Patterns
 
-- Do NOT skip the follow-up — it's the most important step for producing useful analysis
-- Do NOT generate a report without asking first
-- Do NOT assume you know the experimental context — always ask
-- Do NOT use jargon without explaining it if the user seems unfamiliar
+- Do NOT skip follow-up — downstream interpretation depends on the context.
+- Do NOT write a full narrative report here; that capability has been removed.
+- Do NOT assume you know the experimental context; always ask.
+- Do NOT invent reference values during follow-up; defer to `ai4s-web-search`.
