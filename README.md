@@ -6,15 +6,15 @@ LSM-Copilot is **not a single skill**. It is a **skill suite** plus the agent's 
 
 ---
 
-## Skill Suite
+## Monorepo Layout
 
-| Skill | Scope | Owns |
-|-------|-------|------|
-| `lsm-copilot` (this folder) | Microscopy **data analysis** | Data loading, layout inference, pipeline selection, computation, QC, artifacts |
-| `ai4s-web-search` (generic) | **Grounded retrieval** | Building queries, executing web search, returning a structured evidence pack |
-| `lsm-result-interpret` | **Result interpretation** | Turning artifacts + evidence into a structured discussion (no full reports) |
+| Skill | Location | Scope |
+|-------|----------|-------|
+| `lsm-copilot` | **repo root** (this folder) | Microscopy **data analysis** — loading, layout inference, pipeline selection, computation, QC, artifacts |
+| `ai4s-web-search` | `skills/ai4s-web-search/` | **Grounded retrieval** — query building, web search, structured evidence pack |
+| `lsm-result-interpret` | `skills/lsm-result-interpret/` | **Result interpretation** — artifacts + evidence → structured discussion (no full reports) |
 
-Sibling skills live at `.cursor/skills/ai4s-web-search/` and `.cursor/skills/lsm-result-interpret/`.
+See `skills/README.md` for how to install the three skills into Cursor.
 
 ---
 
