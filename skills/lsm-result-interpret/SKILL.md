@@ -1,7 +1,7 @@
 ---
 name: lsm-result-interpret
 description: "Result interpretation skill for fluorescence/confocal microscopy. Use when analysis outputs already exist and the user wants literature-grounded discussion of what the numbers mean — not a full manuscript."
-version: "0.2.0"
+version: "0.3.0"
 ---
 
 # LSM Result Interpret
@@ -75,6 +75,18 @@ ai4s-web-search ──►    │    reference values / literature evidence
                        ▼
                lsm-result-interpret  ──►  structured interpretation
 ```
+
+### 0. User-feedback correction loop
+
+Use this loop whenever the user says the interpretation, biological claim, evidence alignment, caveat, citation, or conclusion is wrong, or gives feedback like "不对 / 有错误 / 解释错了 / 文献不相关".
+
+1. **Ask for the specific error first.** If the feedback is vague, ask one concise question: which sentence, claim, table row, citation, assumption, or missing context is wrong?
+2. **Classify the issue.** Use one or more classes: `artifact_misread`, `wrong_context`, `unsupported_claim`, `bad_citation`, `overclaim`, `missed_caveat`, `wrong_comparator`, `needs_new_analysis`.
+3. **Reflect before revising.** State which assumption caused the incorrect interpretation and whether the fix needs new evidence, corrected artifacts from `lsm-copilot`, or only a rewritten conclusion.
+4. **Re-ground if needed.** If the correction affects literature/reference claims, request `ai4s-web-search` before revising.
+5. **Produce a corrected interpretation.** Include a short "Correction applied" note before the normal output structure, listing the changed claims and any remaining uncertainty.
+
+Do not silently patch a conclusion while keeping the same evidence alignment if the user's correction changes the biological or methodological basis.
 
 ### 1. Intake & sanity check
 
@@ -176,3 +188,4 @@ No other sections. No "Abstract", no "Title", no "Acquisition Parameters" table 
 - Do NOT expand into a full paper draft; that is out of scope.
 - Do NOT rerun analysis here; hand back to `lsm-copilot` if new numbers are needed.
 - Do NOT over-claim biological significance from a single sample.
+- Do NOT dismiss user correction feedback; ask what is specifically wrong and revise the reasoning path before rewriting.

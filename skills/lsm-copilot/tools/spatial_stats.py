@@ -18,13 +18,15 @@ def load_spheres(csv_path):
     with open(csv_path) as f:
         reader = csv.DictReader(f)
         for r in reader:
+            diameter = r.get('diameter_um') or r.get('equivalent_diameter_um')
+            volume = r.get('volume_um3') or r.get('surface_mesh_volume_um3') or r.get('voxel_filled_volume_um3')
             rows.append({
-                'id': int(r['id']),
-                'cz': float(r['cz_um']),
-                'cy': float(r['cy_um']),
-                'cx': float(r['cx_um']),
-                'diameter': float(r['diameter_um']),
-                'volume': float(r['volume_um3']),
+                'id': int(r.get('id') or r.get('label')),
+                'cz': float(r.get('cz_um') or r.get('centroid_z_um')),
+                'cy': float(r.get('cy_um') or r.get('centroid_y_um')),
+                'cx': float(r.get('cx_um') or r.get('centroid_x_um')),
+                'diameter': float(diameter),
+                'volume': float(volume),
             })
     return rows
 
@@ -48,6 +50,7 @@ def clark_evans_index(nnd, n_objects, volume_um3):
 
 def z_segment_stats(spheres, n_segments=10):
     zs = np.array([s['cz'] for s in spheres])
+    ds = np.array([s['diameter'] for s in spheres])
     vs = np.array([s['volume'] for s in spheres])
     z_min, z_max = zs.min(), zs.max()
     edges = np.linspace(z_min, z_max, n_segments + 1)
@@ -57,12 +60,14 @@ def z_segment_stats(spheres, n_segments=10):
         if i == n_segments - 1:
             mask = (zs >= edges[i]) & (zs <= edges[i + 1])
         count = mask.sum()
+        avg_diam = ds[mask].mean() if count > 0 else 0
         avg_vol = vs[mask].mean() if count > 0 else 0
         segments.append({
             'segment': i + 1,
             'z_start': edges[i],
             'z_end': edges[i + 1],
             'count': int(count),
+            'avg_diameter': avg_diam,
             'avg_volume': avg_vol,
         })
     return segments
@@ -99,16 +104,16 @@ def plot_nnd(nnd, output_dir):
     plt.close()
 
 
-def plot_volume_vs_z(spheres, output_dir):
+def plot_diameter_vs_z(spheres, output_dir):
     zs = [s['cz'] for s in spheres]
-    vs = [s['volume'] for s in spheres]
+    ds = [s['diameter'] for s in spheres]
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(zs, vs, s=10, alpha=0.5, color='steelblue')
+    ax.scatter(zs, ds, s=10, alpha=0.5, color='steelblue')
     ax.set_xlabel('Z position (µm)')
-    ax.set_ylabel('Volume (µm³)')
-    ax.set_title('Volume vs Z Position')
+    ax.set_ylabel('Equivalent diameter (µm)')
+    ax.set_title('Diameter vs Z Position')
     plt.tight_layout()
-    plt.savefig(Path(output_dir) / 'volume_vs_z.png', dpi=200)
+    plt.savefig(Path(output_dir) / 'diameter_vs_z.png', dpi=200)
     plt.close()
 
 
@@ -153,10 +158,10 @@ if __name__ == '__main__':
     print(f"\n=== Z-Segment Statistics ({args.n_segments} segments) ===")
     for seg in segments:
         print(f"  Seg {seg['segment']:2d}: z=[{seg['z_start']:.1f}-{seg['z_end']:.1f}] "
-              f"count={seg['count']:3d}, avg_vol={seg['avg_volume']:.2f} µm³")
+              f"count={seg['count']:3d}, avg_diam={seg['avg_diameter']:.2f} µm")
 
     plot_nnd(nnd, outdir)
-    plot_volume_vs_z(spheres, outdir)
+    plot_diameter_vs_z(spheres, outdir)
     plot_size_distribution(spheres, outdir)
 
     with open(outdir / 'spatial_stats.csv', 'w', newline='') as f:
@@ -166,5 +171,18 @@ if __name__ == '__main__':
             w.writerow([k, v])
         w.writerow(['mean_nnd_um', nnd.mean()])
         w.writerow(['std_nnd_um', nnd.std()])
+
+    with open(outdir / 'z_segment_stats.csv', 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['segment', 'z_start_um', 'z_end_um', 'count', 'avg_diameter_um', 'avg_volume_um3'])
+        for seg in segments:
+            w.writerow([
+                seg['segment'],
+                seg['z_start'],
+                seg['z_end'],
+                seg['count'],
+                seg['avg_diameter'],
+                seg['avg_volume'],
+            ])
 
     print(f"\nAll outputs saved to {outdir}/")

@@ -4,7 +4,7 @@
 
 | Metric | What It Tells You |
 |--------|-------------------|
-| Volume | 3D size. Must use calibrated voxel size. |
+| Volume | 3D size. Must use calibrated voxel size and must record the calculation mode. |
 | Equivalent diameter | Diameter of sphere with same volume |
 | Sphericity | How round (1.0 = perfect sphere) |
 | Aspect ratio | Elongation (1.0 = isotropic) |
@@ -53,3 +53,20 @@
 - Without a paired control, compare to published reference values and note the limitation
 
 These definitions are stable, but **always double-check the exact formula** when implementing — different sources may define metrics slightly differently.
+
+## 3D Size and Volume Modes
+
+For segmented confocal/LSM objects, prefer `equivalent_diameter_um` as the primary size metric when volume-derived error is too sensitive. Volume scales with diameter cubed, so small boundary differences can look large in volume space.
+
+Save the mode and inputs:
+
+- `equivalent_diameter_um`: `(6 * volume_um3 / pi)^(1/3)`, computed from the selected non-GT primary volume.
+- `voxel_filled_volume_um3`: foreground voxel count multiplied by calibrated voxel volume.
+- `surface_mesh_volume_um3`: mesh volume computed directly from the 3D binary object mask, e.g. marching cubes with calibrated Z/Y/X voxel spacing. Use this as the default surface-style volume when available.
+- `boundary_alpha_0_5_volume_um3`: interior voxels plus half-weighted boundary voxels; useful as a conservative surface-style estimate.
+
+CSV/GT benchmark exports must not be used to tune alpha, volume scale, threshold, or object filters in the default workflow. They are valid only for post hoc discrepancy reporting. If a user explicitly requests supervised calibration, label the output as calibrated and keep it separate from default analysis.
+
+For Z-stacks with bottom-plane artifacts, substrate/contact regions, or user feedback that low-Z should be removed, apply a fixed low-Z crop before labeling and remove objects touching the crop boundary. Apply the same kept Z range to benchmark CSV/statistics rows before post hoc comparison. Record the excluded fraction/slices and benchmark counts before/after filtering; do not choose the crop from CSV/GT benchmark performance.
+
+If mesh volume is unavailable or too slow, use `voxel_filled_volume_um3` as the primary physical mask volume and compute `equivalent_diameter_um` from that fallback. Always log `primary_size_metric`, `volume_mode`, `volume_source`, `benchmark_used_for_volume_calibration: false`, and `benchmark_used_for_size_calibration: false`.

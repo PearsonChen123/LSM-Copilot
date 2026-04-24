@@ -1,7 +1,7 @@
 ---
 name: ai4s-web-search
 description: "Generic AI-for-Science web search helper. Use when any AI4S task needs grounded retrieval of methods, libraries, install facts, licenses, APIs, or reference values."
-version: "0.2.0"
+version: "0.3.0"
 ---
 
 # AI4S Web Search Helper
@@ -48,6 +48,18 @@ If the caller omits `purpose`, infer it from the goal (e.g. asking "which librar
 ---
 
 ## Workflow
+
+### 0. User-feedback correction loop
+
+Use this loop whenever the user says the search/evidence is wrong, incomplete, irrelevant, outdated, or "不对 / 有错误 / 不是这个".
+
+1. **Ask for the specific error first.** If the feedback is vague, ask one concise question: which result, query, citation, license/install fact, or missing method is wrong?
+2. **Classify the issue.** Mark it as `wrong_scope`, `missing_source`, `outdated_source`, `low_quality_source`, `incorrect_license_or_install`, `bad_query`, or `contradictory_evidence`.
+3. **Reflect before re-searching.** State what assumption caused the error and how the query/evidence criteria will change.
+4. **Run a corrected search.** Build revised queries from the user's correction; prefer primary sources and explicitly exclude the prior failure mode.
+5. **Emit a corrected evidence pack.** Include a `correction` block with the user feedback, issue class, changed queries, superseded result IDs/URLs, and remaining uncertainty.
+
+Do not defend the previous pack when the user reports an error. Treat feedback as new evidence and revise the retrieval plan.
 
 ### 1. Clarify (only if critical fields are missing)
 
@@ -110,6 +122,7 @@ Always return at least the JSON block below. Markdown prose is optional and shou
 {
   "purpose": "method_discovery",
   "goal": "...",
+  "correction": null,
   "queries": ["...", "..."],
   "results": [
     {
@@ -134,6 +147,19 @@ Always return at least the JSON block below. Markdown prose is optional and shou
 
 Downstream skills may read `results[*]` as evidence and cite `url` verbatim. For extension work, `lsm-copilot` must treat this pack as input to an approval gate, not as permission to install automatically.
 
+When produced after user feedback, set `correction` to:
+
+```json
+{
+  "user_feedback": "...",
+  "issue_class": "wrong_scope",
+  "reflection": "Previous query over-weighted generic segmentation and under-weighted confocal LSM droplet data.",
+  "changed_queries": ["..."],
+  "superseded_urls": ["..."],
+  "remaining_uncertainty": "..."
+}
+```
+
 ---
 
 ## Anti-Patterns
@@ -144,3 +170,4 @@ Downstream skills may read `results[*]` as evidence and cite `url` verbatim. For
 - Do NOT install packages, clone repositories, download weights, or execute candidate tools.
 - Do NOT exceed `k` shortlisted items; the caller can request another round.
 - Do NOT treat a single blog post as a primary source for method choice.
+- Do NOT rerun the same query set after user correction without first stating what assumption changed.

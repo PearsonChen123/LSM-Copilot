@@ -32,7 +32,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from scipy.ndimage import gaussian_filter, uniform_filter, label as ndi_label
 from skimage.filters import threshold_otsu
-from skimage.measure import regionprops
+from skimage.measure import marching_cubes, regionprops
 
 N_WORKERS = max(1, os.cpu_count())
 from pathlib import Path
@@ -40,6 +40,12 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument('input', help='Input .lsm or .tif')
 parser.add_argument('--voxel', nargs=3, type=float, default=None, metavar=('VZ','VY','VX'))
+parser.add_argument(
+    '--volume-alpha',
+    type=float,
+    default=None,
+    help='Optional manual boundary alpha for surface-style volume: interior + alpha*boundary. No benchmark/GT auto-calibration is performed.',
+)
 args = parser.parse_args()
 
 input_path = Path(args.input)
@@ -75,6 +81,43 @@ def make_colors(n):
     np.random.seed(42)
     hues = (hues + np.random.rand()) % 1.0
     return [hsv_to_rgb([h, 0.9, 0.95]) for h in hues]
+
+
+def component_boundary_counts(labels):
+    """Return per-label interior and boundary voxel counts for 3D labels."""
+    foreground = labels > 0
+    if not foreground.any():
+        return np.array([0]), np.array([0])
+    padded = np.pad(labels, 1, mode='constant', constant_values=0)
+    center = padded[1:-1, 1:-1, 1:-1]
+    same_neighbor = (
+        (padded[:-2, 1:-1, 1:-1] == center)
+        & (padded[2:, 1:-1, 1:-1] == center)
+        & (padded[1:-1, :-2, 1:-1] == center)
+        & (padded[1:-1, 2:, 1:-1] == center)
+        & (padded[1:-1, 1:-1, :-2] == center)
+        & (padded[1:-1, 1:-1, 2:] == center)
+    )
+    interior = foreground & same_neighbor
+    boundary = foreground & ~same_neighbor
+    max_label = int(labels.max())
+    interior_counts = np.bincount(labels[interior].ravel(), minlength=max_label + 1)
+    boundary_counts = np.bincount(labels[boundary].ravel(), minlength=max_label + 1)
+    return interior_counts, boundary_counts
+
+
+def mesh_volume_from_mask(mask):
+    """Compute non-GT surface volume directly from a 3D binary object mask."""
+    if not mask.any():
+        return 0.0
+    padded = np.pad(mask.astype(np.float32), 1, mode='constant', constant_values=0)
+    try:
+        vertices, faces, _, _ = marching_cubes(padded, level=0.5, spacing=(vz, vy, vx))
+    except Exception:
+        return float(mask.sum() * voxel_vol)
+    triangles = vertices[faces]
+    signed = np.einsum('ij,ij->i', np.cross(triangles[:, 0], triangles[:, 1]), triangles[:, 2])
+    return float(abs(signed.sum()) / 6.0)
 
 
 # ====== 3D Detection Core (multi-core) ======
@@ -152,19 +195,34 @@ class Detector:
 
         labels, n_obj = ndi_label(binary)
         self.labels_3d = labels
+        interior_counts, boundary_counts = component_boundary_counts(labels)
+        volume_alpha_source = 'manual_alpha' if args.volume_alpha is not None else 'not_used_mesh_volume'
+        raw_volume_alpha = 1.0 if args.volume_alpha is None else float(args.volume_alpha)
+        volume_alpha = float(np.clip(raw_volume_alpha, 0.25, 2.50))
 
         props = regionprops(labels, intensity_image=raw)
         self.spheres = []
 
         for p in props:
-            vol_um3 = p.area * voxel_vol
-            r_um = (3.0 * vol_um3 / (4.0 * np.pi)) ** (1.0 / 3.0)
-            d_um = 2 * r_um
-
             if p.area < min_area:
                 continue
 
             bb = p.bbox
+            label_id = int(p.label)
+            filled_vol_um3 = p.area * voxel_vol
+            interior_voxels = int(interior_counts[label_id])
+            boundary_voxels = int(boundary_counts[label_id])
+            boundary_alpha_0_5_vol_um3 = (interior_voxels + 0.5 * boundary_voxels) * voxel_vol
+            sub = labels[bb[0]:bb[3], bb[1]:bb[4], bb[2]:bb[5]] == p.label
+            mesh_vol_um3 = mesh_volume_from_mask(sub)
+            if args.volume_alpha is None:
+                vol_um3 = mesh_vol_um3
+                volume_mode = 'surface_mesh_volume_um3'
+            else:
+                vol_um3 = (interior_voxels + volume_alpha * boundary_voxels) * voxel_vol
+                volume_mode = 'manual_boundary_alpha_volume_um3'
+            r_um = (3.0 * vol_um3 / (4.0 * np.pi)) ** (1.0 / 3.0)
+            d_um = 2 * r_um
             dz_bb = (bb[3] - bb[0]) * vz
             dy_bb = (bb[4] - bb[1]) * vy
             dx_bb = (bb[5] - bb[2]) * vx
@@ -179,7 +237,7 @@ class Detector:
                 continue
             if d_um < min_d or d_um > max_d:
                 continue
-            if bb[0] == 0 or bb[3] >= nz or bb[1] == 0 or bb[4] >= ny or bb[2] == 0 or bb[5] >= nx:
+            if bb[0] <= z_start or bb[3] >= z_end or bb[1] == 0 or bb[4] >= ny or bb[2] == 0 or bb[5] >= nx:
                 continue
 
             cz, cy, cx = p.centroid
@@ -190,6 +248,13 @@ class Detector:
                 'diameter': d_um,
                 'radius': r_um,
                 'volume': vol_um3,
+                'volume_mode': volume_mode,
+                'surface_mesh_volume_um3': mesh_vol_um3,
+                'voxel_filled_volume_um3': filled_vol_um3,
+                'boundary_alpha_0_5_volume_um3': boundary_alpha_0_5_vol_um3,
+                'volume_alpha': volume_alpha,
+                'volume_alpha_source': volume_alpha_source,
+                'benchmark_used_for_volume_calibration': False,
                 'z_start': bb[0], 'z_end': bb[3] - 1,
                 'n_slices': n_slices_in,
                 'intensity': p.intensity_mean,
@@ -201,7 +266,11 @@ class Detector:
         for i, s in enumerate(self.spheres):
             self.sphere_colors[s['label']] = colors[i]
 
-        print(f"{len(self.spheres)} spheres ({time.time()-t0:.1f}s)")
+        print(
+            f"{len(self.spheres)} spheres ({time.time()-t0:.1f}s, "
+            f"volume mode={self.spheres[0]['volume_mode'] if self.spheres else 'none'}, "
+            f"benchmark_calibration=false)"
+        )
 
     def get_slice_circles(self, zi):
         circles = []
@@ -250,7 +319,7 @@ slider_y = [0.21, 0.19, 0.17, 0.15, 0.13, 0.11, 0.09, 0.07, 0.05]
 sliders = {}
 sdefs = [
     ('Z slice',      0, nz-1, nz//2, 1),
-    ('Z start',      0, nz-1, int(nz * 0.05), 1),
+    ('Z start',      0, nz-1, int(nz * 0.10), 1),
     ('Z end',        0, nz-1, int(nz * 0.95), 1),
     ('Invert 0=dark 1=bright', 0, 1, 0, 1),
     ('Otsu x fact',  0.3, 1.2, 1.0, None),
@@ -331,20 +400,20 @@ def draw_zprofile():
 
 
 def draw_stats():
-    """Volume vs Z position 散点图（类似 Imaris 输出）"""
+    """Diameter vs Z position scatter plot."""
     ax_stats.clear()
     if not det.spheres:
         ax_stats.text(0.5, 0.5, 'No spheres', ha='center', va='center',
                       fontsize=14, transform=ax_stats.transAxes)
-        ax_stats.set_title('Volume vs Z')
+        ax_stats.set_title('Diameter vs Z')
         return
 
     zs = np.array([s['cz_um'] for s in det.spheres])
-    vs = np.array([s['volume'] for s in det.spheres])
-    ax_stats.scatter(zs, vs, s=8, c='black', alpha=0.5, edgecolors='none')
+    ds = np.array([s['diameter'] for s in det.spheres])
+    ax_stats.scatter(zs, ds, s=8, c='black', alpha=0.5, edgecolors='none')
     ax_stats.set_xlabel('Position Z [µm]', fontsize=9)
-    ax_stats.set_ylabel('Volume [µm³]', fontsize=9)
-    ax_stats.set_title(f'Volume vs Z ({len(det.spheres)} spheres)', fontsize=10)
+    ax_stats.set_ylabel('Equivalent diameter [µm]', fontsize=9)
+    ax_stats.set_title(f'Diameter vs Z ({len(det.spheres)} spheres)', fontsize=10)
     ax_stats.grid(True, alpha=0.3)
     ax_stats.set_xlim(left=0)
     ax_stats.set_ylim(bottom=0)
@@ -371,15 +440,15 @@ def draw_histograms():
     seg_width = seg_edges[1] - seg_edges[0]
 
     zs = np.array([s['cz_um'] for s in det.spheres])
-    vs_arr = np.array([s['volume'] for s in det.spheres])
+    ds_arr = np.array([s['diameter'] for s in det.spheres])
     counts, _ = np.histogram(zs, bins=seg_edges)
     seg_idx = np.digitize(zs, seg_edges) - 1
     seg_idx = np.clip(seg_idx, 0, N_SEGMENTS - 1)
-    avg_vol = np.zeros(N_SEGMENTS)
+    avg_diam = np.zeros(N_SEGMENTS)
     for i in range(N_SEGMENTS):
         mask = seg_idx == i
         if mask.any():
-            avg_vol[i] = vs_arr[mask].mean()
+            avg_diam[i] = ds_arr[mask].mean()
 
     colors_bar = plt.cm.viridis(np.linspace(0.2, 0.9, N_SEGMENTS))
     bars = ax_hist.bar(seg_mids, counts, width=seg_width * 0.9,
@@ -393,23 +462,22 @@ def draw_histograms():
     ax_hist.set_title(f'Sphere count per segment ({N_SEGMENTS})', fontsize=10)
     ax_hist.set_xlim(z_start_um, z_end_um)
 
-    colors_vol = plt.cm.magma(np.linspace(0.2, 0.85, N_SEGMENTS))
-    bars_v = ax_avgvol.bar(seg_mids, avg_vol, width=seg_width * 0.9,
-                           color=colors_vol, edgecolor='white', linewidth=0.5)
-    for bar, av, c in zip(bars_v, avg_vol, counts):
+    colors_diam = plt.cm.magma(np.linspace(0.2, 0.85, N_SEGMENTS))
+    bars_v = ax_avgvol.bar(seg_mids, avg_diam, width=seg_width * 0.9,
+                           color=colors_diam, edgecolor='white', linewidth=0.5)
+    for bar, av, c in zip(bars_v, avg_diam, counts):
         if c > 0:
             ax_avgvol.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.1,
                            f'{av:.1f}', ha='center', va='bottom',
                            fontsize=6, fontweight='bold')
     ax_avgvol.set_xlabel('Z position (µm)', fontsize=9)
-    ax_avgvol.set_ylabel('Avg volume (µm³)', fontsize=9)
-    ax_avgvol.set_title(f'Avg volume per segment ({N_SEGMENTS})', fontsize=10)
+    ax_avgvol.set_ylabel('Avg diameter (µm)', fontsize=9)
+    ax_avgvol.set_title(f'Avg diameter per segment ({N_SEGMENTS})', fontsize=10)
     ax_avgvol.set_xlim(z_start_um, z_end_um)
 
-    ds = np.array([s['diameter'] for s in det.spheres])
-    ax_zdist.hist(ds, bins=30, color='teal', edgecolor='white', alpha=0.8)
-    ax_zdist.axvline(np.median(ds), color='red', ls='--',
-                     label=f'median={np.median(ds):.1f}µm')
+    ax_zdist.hist(ds_arr, bins=30, color='teal', edgecolor='white', alpha=0.8)
+    ax_zdist.axvline(np.median(ds_arr), color='red', ls='--',
+                     label=f'median={np.median(ds_arr):.1f}µm')
     ax_zdist.set_xlabel('Diameter (µm)', fontsize=9)
     ax_zdist.set_title('Size distribution', fontsize=10)
     ax_zdist.legend(fontsize=8)
@@ -417,17 +485,16 @@ def draw_histograms():
     seg_labels = [f"{seg_edges[i]:.1f}-{seg_edges[i+1]:.1f}" for i in range(N_SEGMENTS)]
     summary = (
         f"Total spheres:  {len(det.spheres)}\n"
-        f"Diameter range: {ds.min():.1f} – {ds.max():.1f} µm\n"
-        f"  mean={ds.mean():.1f}  median={np.median(ds):.1f} µm\n"
-        f"Volume total:   {vs_arr.sum():.0f} µm³\n"
+        f"Diameter range: {ds_arr.min():.1f} – {ds_arr.max():.1f} µm\n"
+        f"  mean={ds_arr.mean():.1f}  median={np.median(ds_arr):.1f} µm\n"
         f"Z range:        {zs.min():.1f} – {zs.max():.1f} µm\n"
         f"Segment size:   {seg_width:.2f} µm\n"
         f"{'─'*46}\n"
-        f" {'#':>2}  {'Z range (µm)':>14}  {'count':>5}  {'avg vol(µm³)':>12}\n"
+        f" {'#':>2}  {'Z range (µm)':>14}  {'count':>5}  {'avg diam(µm)':>12}\n"
         f"{'─'*46}\n"
     )
     for i in range(N_SEGMENTS):
-        av_str = f"{avg_vol[i]:.1f}" if counts[i] > 0 else "—"
+        av_str = f"{avg_diam[i]:.1f}" if counts[i] > 0 else "—"
         summary += f" {i+1:>2}. {seg_labels[i]:>14}  {counts[i]:>5}  {av_str:>12}\n"
 
     ax_info.text(0.02, 0.98, summary, transform=ax_info.transAxes,
@@ -472,17 +539,16 @@ def _seg_data():
     seg_mids = 0.5 * (seg_edges[:-1] + seg_edges[1:])
     seg_width = seg_edges[1] - seg_edges[0]
     zs = np.array([s['cz_um'] for s in det.spheres])
-    vs_arr = np.array([s['volume'] for s in det.spheres])
     ds = np.array([s['diameter'] for s in det.spheres])
     counts, _ = np.histogram(zs, bins=seg_edges)
     seg_idx = np.clip(np.digitize(zs, seg_edges) - 1, 0, N_SEGMENTS - 1)
-    avg_vol = np.zeros(N_SEGMENTS)
+    avg_diam = np.zeros(N_SEGMENTS)
     for i in range(N_SEGMENTS):
         mask = seg_idx == i
         if mask.any():
-            avg_vol[i] = vs_arr[mask].mean()
+            avg_diam[i] = ds[mask].mean()
     return dict(seg_edges=seg_edges, seg_mids=seg_mids, seg_width=seg_width,
-                zs=zs, vs_arr=vs_arr, ds=ds, counts=counts, avg_vol=avg_vol)
+                zs=zs, ds=ds, counts=counts, avg_diam=avg_diam)
 
 
 def save_all(event=None):
@@ -497,7 +563,6 @@ def save_all(event=None):
         return
 
     zs = np.array([s['cz_um'] for s in det.spheres])
-    vs_arr = np.array([s['volume'] for s in det.spheres])
     ds = np.array([s['diameter'] for s in det.spheres])
     sd = _seg_data()
 
@@ -507,32 +572,45 @@ def save_all(event=None):
     with open(out_dir / 'spheres.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['id', 'cz_um', 'cy_um', 'cx_um', 'diameter_um', 'radius_um',
-                     'volume_um3', 'z_start', 'z_end', 'n_slices', 'intensity', 'aspect'])
+                     'volume_um3', 'volume_mode', 'surface_mesh_volume_um3',
+                     'voxel_filled_volume_um3',
+                     'boundary_alpha_0_5_volume_um3', 'volume_alpha',
+                     'volume_alpha_source', 'benchmark_used_for_volume_calibration',
+                     'z_start', 'z_end', 'n_slices', 'intensity', 'aspect'])
         for i, s in enumerate(det.spheres):
             w.writerow([i + 1, f"{s['cz_um']:.3f}", f"{s['cy_um']:.3f}",
                         f"{s['cx_um']:.3f}", f"{s['diameter']:.3f}",
                         f"{s['radius']:.3f}", f"{s['volume']:.3f}",
+                        s['volume_mode'], f"{s['surface_mesh_volume_um3']:.3f}",
+                        f"{s['voxel_filled_volume_um3']:.3f}",
+                        f"{s['boundary_alpha_0_5_volume_um3']:.3f}",
+                        f"{s['volume_alpha']:.6f}", s['volume_alpha_source'],
+                        s['benchmark_used_for_volume_calibration'],
                         s['z_start'], s['z_end'], s['n_slices'],
                         f"{s['intensity']:.2f}", f"{s['aspect']:.3f}"])
     print(f"  spheres.csv ({len(det.spheres)} rows)")
 
-    # 2) volume_vs_z.csv
-    with open(out_dir / 'volume_vs_z.csv', 'w', newline='') as f:
+    # 2) diameter_vs_z.csv
+    with open(out_dir / 'diameter_vs_z.csv', 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['id', 'position_z_um', 'volume_um3', 'diameter_um'])
+        w.writerow(['id', 'position_z_um', 'volume_um3', 'diameter_um',
+                    'volume_mode', 'volume_alpha', 'volume_alpha_source',
+                    'benchmark_used_for_volume_calibration'])
         for i, s in enumerate(det.spheres):
             w.writerow([i + 1, f"{s['cz_um']:.3f}", f"{s['volume']:.3f}",
-                        f"{s['diameter']:.3f}"])
-    print(f"  volume_vs_z.csv ({len(det.spheres)} rows)")
+                        f"{s['diameter']:.3f}", s['volume_mode'],
+                        f"{s['volume_alpha']:.6f}", s['volume_alpha_source'],
+                        s['benchmark_used_for_volume_calibration']])
+    print(f"  diameter_vs_z.csv ({len(det.spheres)} rows)")
 
     # 3) segments.csv
     with open(out_dir / 'segments.csv', 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['segment', 'z_start_um', 'z_end_um', 'count', 'avg_volume_um3'])
+        w.writerow(['segment', 'z_start_um', 'z_end_um', 'count', 'avg_diameter_um'])
         for i in range(N_SEGMENTS):
             w.writerow([i + 1, f"{sd['seg_edges'][i]:.2f}",
                         f"{sd['seg_edges'][i+1]:.2f}", sd['counts'][i],
-                        f"{sd['avg_vol'][i]:.3f}" if sd['counts'][i] > 0 else ''])
+                        f"{sd['avg_diam'][i]:.3f}" if sd['counts'][i] > 0 else ''])
     print(f"  segments.csv ({N_SEGMENTS} rows)")
 
     # ========== PNG: 独立绘制 ==========
@@ -570,19 +648,19 @@ def save_all(event=None):
     plt.close(f2)
     print("  yz_minip.png")
 
-    # 3) volume_vs_z.png
+    # 3) diameter_vs_z.png
     f3, a3 = plt.subplots(figsize=(8, 5))
-    a3.scatter(zs, vs_arr, s=10, c='black', alpha=0.5, edgecolors='none')
+    a3.scatter(zs, ds, s=10, c='black', alpha=0.5, edgecolors='none')
     a3.set_xlabel('Position Z [µm]', fontsize=11)
-    a3.set_ylabel('Volume [µm³]', fontsize=11)
-    a3.set_title(f'Volume vs Z ({len(det.spheres)} spheres)', fontsize=12)
+    a3.set_ylabel('Equivalent diameter [µm]', fontsize=11)
+    a3.set_title(f'Diameter vs Z ({len(det.spheres)} spheres)', fontsize=12)
     a3.grid(True, alpha=0.3)
     a3.set_xlim(left=0)
     a3.set_ylim(bottom=0)
     f3.tight_layout()
-    f3.savefig(out_dir / 'volume_vs_z.png', dpi=dpi, facecolor='white')
+    f3.savefig(out_dir / 'diameter_vs_z.png', dpi=dpi, facecolor='white')
     plt.close(f3)
-    print("  volume_vs_z.png")
+    print("  diameter_vs_z.png")
 
     # 4) count_per_segment.png
     f4, a4 = plt.subplots(figsize=(8, 4))
@@ -602,23 +680,23 @@ def save_all(event=None):
     plt.close(f4)
     print("  count_per_segment.png")
 
-    # 5) avg_volume_per_segment.png
+    # 5) avg_diameter_per_segment.png
     f5, a5 = plt.subplots(figsize=(8, 4))
-    colors_vol = plt.cm.magma(np.linspace(0.2, 0.85, N_SEGMENTS))
-    bars_v = a5.bar(sd['seg_mids'], sd['avg_vol'], width=sd['seg_width'] * 0.9,
-                    color=colors_vol, edgecolor='white', linewidth=0.5)
-    for bar, av, c in zip(bars_v, sd['avg_vol'], sd['counts']):
+    colors_diam = plt.cm.magma(np.linspace(0.2, 0.85, N_SEGMENTS))
+    bars_v = a5.bar(sd['seg_mids'], sd['avg_diam'], width=sd['seg_width'] * 0.9,
+                    color=colors_diam, edgecolor='white', linewidth=0.5)
+    for bar, av, c in zip(bars_v, sd['avg_diam'], sd['counts']):
         if c > 0:
             a5.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.1,
                     f'{av:.1f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
     a5.set_xlabel('Z position (µm)', fontsize=11)
-    a5.set_ylabel('Avg volume (µm³)', fontsize=11)
-    a5.set_title(f'Avg volume per segment ({N_SEGMENTS})', fontsize=12)
+    a5.set_ylabel('Avg diameter (µm)', fontsize=11)
+    a5.set_title(f'Avg diameter per segment ({N_SEGMENTS})', fontsize=12)
     a5.set_xlim(sd['seg_edges'][0], sd['seg_edges'][-1])
     f5.tight_layout()
-    f5.savefig(out_dir / 'avg_volume_per_segment.png', dpi=dpi, facecolor='white')
+    f5.savefig(out_dir / 'avg_diameter_per_segment.png', dpi=dpi, facecolor='white')
     plt.close(f5)
-    print("  avg_volume_per_segment.png")
+    print("  avg_diameter_per_segment.png")
 
     # 6) diameter_distribution.png
     f6, a6 = plt.subplots(figsize=(8, 4))

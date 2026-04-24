@@ -1,7 +1,7 @@
 ---
 name: lsm-copilot
 description: "LSM-Copilot suite flow for fluorescence/confocal microscopy. Orchestrates search, data processing, controlled extension/install, and evidence-backed interpretation."
-version: "4.0.0"
+version: "4.4.0"
 ---
 
 # LSM-Copilot Suite Flow
@@ -28,7 +28,10 @@ Skills never call each other directly. The agent performs composition: it invoke
 - **Processing before interpretation.** This skill produces numbers, figures, and summaries; `lsm-result-interpret` explains them.
 - **Controlled extension, not blind installation.** If a task needs a new open-source algorithm, the agent may extend the workflow only after evidence review, license/install verification, explicit user approval, and smoke testing.
 - **Human-in-the-loop.** Ambiguous layouts, risky installs, missing controls, or thin evidence trigger explicit questions rather than silent assumptions.
+- **Artifacts at every step.** Do not only return final figures. Save intake, layout, evidence, pipeline decisions, QC, intermediate tables, final tables, and interpretation handoff files under the run output directory.
+- **Raw images before derived exports.** When raw microscopy files (`.lsm`, `.czi`, `.lif`, `.tif`, `.mrc`) and derived CSV/statistics exports are both present, use the raw image as the primary analysis input. Treat CSV/statistics exports as post hoc benchmarks or comparison references unless the user explicitly asks to analyze tables only.
 - **Physical units always.** Measurements must use µm / µm² / µm³ / AU, never only pixels.
+- **Correction-aware workflow.** If the user reports an error, pause the normal flow, ask what is specifically wrong, then revise assumptions, parameters, method choice, or outputs based on that feedback.
 
 ---
 
@@ -78,17 +81,45 @@ User request
 
 ## Data-Processing Workflow
 
+### Step 0 — User-feedback correction loop
+
+Use this loop whenever the user says the analysis, threshold, volume, count, figure, file choice, or workflow is wrong, or uses feedback like "不对 / 有错误 / 这个结果不对 / 阈值错了 / 体积算法错了".
+
+1. **Ask for the specific error first.** If feedback is vague, ask one concise question that requests the concrete mismatch: which file/group, which metric or figure, expected behavior/value, and why the current result looks wrong.
+2. **Classify the issue.** Use one or more classes: `wrong_input_source`, `layout_error`, `parameter_error`, `algorithm_error`, `unit_or_voxel_error`, `benchmark_mismatch`, `visual_qc_error`, `artifact_missing`, `interpretation_handoff_error`.
+3. **Reflect before changing code or rerunning.** Record what assumption likely failed, what evidence supports the correction, and which part of the pipeline must change.
+4. **Create a correction run or revision.** Do not silently overwrite prior outputs unless the user asks. Prefer `output/<run_id>_corrected/` or add `correction_id` to the existing run.
+5. **Use raw data as primary evidence.** If CSV/statistics exports are involved, use them only to diagnose or benchmark image-derived measurements unless the user explicitly requests table-only analysis.
+6. **Rerun only the necessary stages.** Recompute affected stages, regenerate intermediate QC figures/tables, and preserve unchanged artifacts.
+7. **Write a correction log.** Save `00_correction_feedback.md` and `08_correction_summary.json` with user feedback, issue class, changed assumptions, changed parameters/code, affected artifacts, before/after metrics, and unresolved risks.
+
+If the user's correction implies a new method or external package is needed, enter Step 6 controlled extension gate before installing or running it.
+
 ### Step 1 — Clarify the scientific question
 
 Ask briefly: what is the sample, what should be measured, what the data looks like, and the file format.
+
+Create a run directory before computation:
+
+```text
+output/<run_id>/
+```
+
+Record the user request, assumptions, input paths, and planned artifacts in `00_intake.json` / `00_intake.md`. See `prompts/artifact_contract.md`.
 
 ### Step 2 — Load and inspect data
 
 Use the built-in loader to print dimensions, voxel size, intensity range, and a representative slice. Supported formats: `.lsm`, `.czi`, `.lif`, `.tif`, `.mrc` family.
 
+Save loader outputs as `01_file_inventory.csv` and `01_file_metadata.json`. If images are inspected visually, save representative raw/MIP/slice QC figures as `01_qc_*`.
+
+If derived CSV/statistics files are supplied alongside raw microscopy data, do not use them as the measurement source at this stage. Register them as benchmark inputs in `01_file_inventory.csv` and defer comparison until after image-derived measurements are produced.
+
 ### Step 3 — Infer array layout
 
 Run the dimension detector to classify the data as 2D / volumetric / multichannel / mixed, and record the routing hint. When layout is ambiguous (for example dim 0 could be Z or C), ask the user once before continuing.
+
+Save layout decisions as `02_layout_detection.json` and any routing notes as `02_layout_notes.md`.
 
 ### Step 4 — Request method evidence
 
@@ -104,6 +135,8 @@ k: 3
 
 Use the evidence pack to justify pipeline choice. If the pack is empty or `confidence: low`, fall back to built-in tools and log the gap. If the user explicitly forbids network use, skip this step and note it in the final artifacts.
 
+Save the retrieval request and evidence pack as `03_method_search_request.json` and `03_evidence_pack.json`. If network was skipped or unavailable, save `03_evidence_gap.md`.
+
 ### Step 5 — Choose the analysis pathway
 
 | Goal | Starting point |
@@ -116,6 +149,8 @@ Use the evidence pack to justify pipeline choice. If the pack is empty or `confi
 | GFP / fluorescence preservation | Per-object intensity, SNR/CTCF, paired comparison if a control exists |
 
 These are starting points. If the evidence pack recommends a stronger method, use the controlled extension gate instead of ad-hoc code.
+
+Save the selected pathway and rejected alternatives as `04_pipeline_decision.md` and, when useful, `04_pipeline_decision.json`.
 
 ### Step 6 — Controlled extension / auto-install gate
 
@@ -138,19 +173,46 @@ Required sequence:
 
 See `prompts/extension.md` for the detailed checklist.
 
+Save extension artifacts as `05_extension_plan.md`, `05_extension_verification.json`, `05_extension_smoke_test.txt`, and `05_extension_provenance.json` when this gate is used. If no extension is needed, save `05_extension_status.json` with `{"status": "not_needed"}`.
+
 ### Step 7 — Run analysis and produce artifacts
 
 Emit, at minimum:
 
+- Intermediate tables and QC outputs produced during processing.
 - Publication-quality figures (at least 200 dpi, scale bars, unit-labeled axes).
 - Tabular outputs (CSV) with all measured quantities in physical units.
 - A small JSON summary with method, parameters, counts, thresholds, evidence URLs, and extension provenance if any.
 
 Units must be µm / µm² / µm³ / AU, never raw pixels only.
 
+Default 3D object size reporting:
+
+- Do not use GT, benchmark CSV, or derived statistics exports to fit any volume parameter. Benchmarks are for post hoc evaluation only.
+- For Z-stacks with bottom-plane artifacts or substrate/contact regions, exclude the bottom low-Z portion before labeling when the user says low-Z should be removed. Default to a fixed 10% low-Z exclusion and log the crop range; do not tune the crop from CSV/GT.
+- Apply the same kept Z range to benchmark CSV/statistics exports before post hoc comparison, and record benchmark object counts before/after filtering.
+- Remove objects touching the low-Z crop boundary so truncated partial objects do not enter the statistics.
+- Use `equivalent_diameter_um = (6 * volume_um3 / pi)^(1/3)` as the primary 3D object size metric when volume-derived error is too sensitive or when comparing against software exports that report volume.
+- Always compute and save `voxel_filled_volume_um3 = foreground_voxels × voxel_volume`.
+- When 3D labels are available and runtime is acceptable, default `volume_um3` to a non-GT surface/mesh estimate computed directly from the segmentation mask, e.g. marching cubes with calibrated voxel spacing.
+- Always compute and save `equivalent_diameter_um` from the primary `volume_um3`; also save equivalent diameters for secondary volume modes when useful.
+- Also save fixed secondary alternatives such as `boundary_alpha_0_5_volume_um3` for auditability, but do not fit alpha from benchmark data.
+- If mesh volume fails or is too slow, fall back to `voxel_filled_volume_um3` as the primary physical mask volume and record the fallback.
+- Always log `primary_size_metric`, `volume_mode`, `volume_source`, fallback status, `benchmark_used_for_volume_calibration: false`, and `benchmark_used_for_size_calibration: false` in the summary JSON.
+
+Save final and intermediate processing outputs using stage prefixes, e.g. `06_intermediate_*`, `07_final_*`, `08_summary.json`. The final summary must include a manifest of every artifact path.
+
+For corrected runs, also emit:
+
+- `00_correction_feedback.md` — the user's reported error and the specific question/answer that clarified it.
+- `08_correction_summary.json` — issue class, reflection, changed assumptions, changed parameters/code, before/after benchmark metrics, and remaining risks.
+- Updated QC figures/tables for every recomputed stage.
+
 ### Step 8 — Follow-up context
 
 After analysis, before ending the turn, collect experimental context using `prompts/followup.md`: sample, aim, channels, treatments, controls/comparators, and replicate status. Ask whether the user wants result interpretation handled by `lsm-result-interpret`.
+
+Save this as `09_followup_context.md` or `09_followup_context.json`. If the user does not provide context, record missing fields explicitly.
 
 ---
 
@@ -195,12 +257,15 @@ Consult `knowledge/` when needed:
 | `file_formats.md` | Unfamiliar or vendor-specific formats |
 | `metrics.md` | Colocalization / morphology / preservation metrics |
 | `deep_learning.md` | DL segmenter setup and trade-offs |
+| `prompts/artifact_contract.md` | Required intermediate and final output files |
 
 ---
 
 ## Anti-Patterns
 
 - Do NOT run analysis before showing the user what the raw data looks like.
+- Do NOT skip intermediate artifact outputs; final figures/tables alone are insufficient.
+- Do NOT use derived CSV/statistics exports as the primary measurement source when raw microscopy images are available, unless the user explicitly requests table-only analysis.
 - Do NOT skip layout detection when the array has more than two dimensions.
 - Do NOT skip method search unless the user explicitly forbids network access.
 - Do NOT auto-install packages, clone repos, download weights, or run external code without explicit user approval.
@@ -208,4 +273,7 @@ Consult `knowledge/` when needed:
 - Do NOT write narrative reports or fabricate citations here; delegate interpretation to `lsm-result-interpret`.
 - Do NOT report measurements in pixels only.
 - Do NOT end an analysis turn without collecting follow-up context.
+- Do NOT ignore user error reports or rerun the same pipeline unchanged after correction feedback.
+- Do NOT overwrite earlier benchmark artifacts during correction unless the user explicitly requests replacement.
+- Do NOT tune threshold, alpha, volume scale, or object filters from CSV/GT benchmark values unless the task is explicitly a supervised calibration experiment and the output is labeled as calibrated rather than default analysis.
 - Do NOT claim fluorescence is preserved or destroyed without a control or literature/reference evidence.
