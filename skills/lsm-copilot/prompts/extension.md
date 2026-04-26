@@ -77,13 +77,14 @@ risks:
   - "<license, GPU, model weight, memory, reproducibility, API stability>"
 ```
 
-Ask for explicit user approval after showing this plan.
+Ask for explicit user approval after showing this plan. Approval must happen before any install, clone, model download, adapter/tool code addition, or full-data run.
 
 ---
 
 ## Implementation Rules
 
 - Prefer packages from PyPI/conda with official docs over arbitrary repo scripts.
+- Do not write extension adapter code until the user has approved the selected method and extension plan.
 - Avoid global installs. Use the active virtual environment or a documented project environment.
 - Pin versions when reproducibility matters.
 - Put glue code in `tools/extensions/`; keep adapters thin and deterministic.

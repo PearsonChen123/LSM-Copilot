@@ -1,5 +1,8 @@
 output/
 skills/lsm-copilot/output/
+.venv_spotiflow/
+spotiflow_datasets/
+spotiflow_datasets.zip
 .cursor/
 .codex
 __pycache__/

@@ -1,7 +1,7 @@
 ---
 name: lsm-copilot
 description: "LSM-Copilot suite flow for fluorescence/confocal microscopy. Orchestrates search, data processing, controlled extension/install, and evidence-backed interpretation."
-version: "4.4.0"
+version: "4.5.0"
 ---
 
 # LSM-Copilot Suite Flow
@@ -27,6 +27,7 @@ Skills never call each other directly. The agent performs composition: it invoke
 - **Search before commitment.** Do not assume the best method. Once the user goal and data layout are known, request `ai4s-web-search`.
 - **Processing before interpretation.** This skill produces numbers, figures, and summaries; `lsm-result-interpret` explains them.
 - **Controlled extension, not blind installation.** If a task needs a new open-source algorithm, the agent may extend the workflow only after evidence review, license/install verification, explicit user approval, and smoke testing.
+- **Method approval before implementation.** For a new task, benchmark, or data type where the best method is not already fixed by the user, first search the internet, recommend the most suitable method with evidence, and ask the user to approve the method/use plan before installing packages, writing adapters/tools, or running the full analysis.
 - **Human-in-the-loop.** Ambiguous layouts, risky installs, missing controls, or thin evidence trigger explicit questions rather than silent assumptions.
 - **Artifacts at every step.** Do not only return final figures. Save intake, layout, evidence, pipeline decisions, QC, intermediate tables, final tables, and interpretation handoff files under the run output directory.
 - **Raw images before derived exports.** When raw microscopy files (`.lsm`, `.czi`, `.lif`, `.tif`, `.mrc`) and derived CSV/statistics exports are both present, use the raw image as the primary analysis input. Treat CSV/statistics exports as post hoc benchmarks or comparison references unless the user explicitly asks to analyze tables only.
@@ -59,16 +60,17 @@ User request
 │           ├── 2. load + inspect data
 │           ├── 3. infer array layout
 │           ├── 4. request method evidence ───────► ai4s-web-search
-│           ├── 5. choose built-in pipeline
-│           ├── 6. if needed: controlled extension gate
+│           ├── 5. recommend method + request user approval
+│           ├── 6. choose approved pipeline
+│           ├── 7. if needed: controlled extension gate
 │           │        ├── extension discovery ─────► ai4s-web-search
 │           │        ├── license/install/API check
 │           │        ├── user approval for network/install/code edits
 │           │        ├── isolated install or vendored reference clone
 │           │        ├── adapter under tools/extensions/
 │           │        └── smoke test + extension log
-│           ├── 7. run analysis and emit artifacts
-│           └── 8. collect experimental context
+│           ├── 8. run analysis and emit artifacts
+│           └── 9. collect experimental context
 │
 └─► Need post-analysis interpretation?
       └─► lsm-result-interpret
@@ -137,11 +139,39 @@ Use the evidence pack to justify pipeline choice. If the pack is empty or `confi
 
 Save the retrieval request and evidence pack as `03_method_search_request.json` and `03_evidence_pack.json`. If network was skipped or unavailable, save `03_evidence_gap.md`.
 
-### Step 5 — Choose the analysis pathway
+### Step 5 — Recommend method and wait for approval
+
+Before installing anything, modifying/adding analysis code, or running a full analysis for a new benchmark/task, present a short recommendation to the user:
+
+- Best method and why it fits the data/task.
+- Key evidence links from `ai4s-web-search`.
+- Expected install/downloads, license, runtime/GPU risk, and output contract.
+- Fallback option if the user declines the recommended method.
+- Exact next actions that will happen only after approval.
+
+Save this as `03_method_recommendation.md` and, when useful, `03_method_recommendation.json`.
+
+Allowed before approval:
+
+- Inspect input files and infer layout.
+- Search the internet and build the evidence pack.
+- Draft the recommendation and extension plan.
+
+Not allowed before approval, unless the user already explicitly chose the method:
+
+- `pip install`, `conda install`, `git clone`, model-weight downloads, Docker pulls, or other external setup.
+- Adding new adapter/tool code for the method.
+- Running the full benchmark/analysis or tuning parameters from benchmark labels.
+- Treating a simpler baseline as final when evidence indicates a stronger task-specific method.
+
+If the user approves the recommendation, continue to the approved built-in path or Step 7 controlled extension gate. If the user declines, ask whether to run the fallback baseline and clearly mark it as a lower-confidence fallback.
+
+### Step 6 — Choose the approved analysis pathway
 
 | Goal | Starting point |
 |------|----------------|
 | Detect and measure objects (2D) | Classical 2D segmentation (Otsu + watershed); optional DL segmenter if evidence supports it |
+| Benchmark 2D fluorescence spot detection | First search current spot-detection methods. If evidence supports Spotiflow or another stronger method, recommend it and wait for approval before installing/writing adapters/running. If declined, use a clearly labeled classical LoG/DoG baseline. |
 | Detect and measure objects (3D) | Interactive 3D thresholding pipeline (Gaussian → background subtraction → Otsu → 3D CC → regionprops) |
 | Fluorescence intensity | Z-depth profile / attenuation correction |
 | Colocalization | Pearson / Manders pixel-based; object-based if evidence supports it |
@@ -150,9 +180,9 @@ Save the retrieval request and evidence pack as `03_method_search_request.json` 
 
 These are starting points. If the evidence pack recommends a stronger method, use the controlled extension gate instead of ad-hoc code.
 
-Save the selected pathway and rejected alternatives as `04_pipeline_decision.md` and, when useful, `04_pipeline_decision.json`.
+Save the selected pathway and rejected alternatives as `04_pipeline_decision.md` and, when useful, `04_pipeline_decision.json`. Include the user approval text or state that approval was not required because the user explicitly selected a built-in method.
 
-### Step 6 — Controlled extension / auto-install gate
+### Step 7 — Controlled extension / auto-install gate
 
 Use this step when a required capability is missing or the evidence pack recommends a third-party algorithm that is materially better than the built-in tools.
 
@@ -175,7 +205,7 @@ See `prompts/extension.md` for the detailed checklist.
 
 Save extension artifacts as `05_extension_plan.md`, `05_extension_verification.json`, `05_extension_smoke_test.txt`, and `05_extension_provenance.json` when this gate is used. If no extension is needed, save `05_extension_status.json` with `{"status": "not_needed"}`.
 
-### Step 7 — Run analysis and produce artifacts
+### Step 8 — Run analysis and produce artifacts
 
 Emit, at minimum:
 
@@ -208,7 +238,7 @@ For corrected runs, also emit:
 - `08_correction_summary.json` — issue class, reflection, changed assumptions, changed parameters/code, before/after benchmark metrics, and remaining risks.
 - Updated QC figures/tables for every recomputed stage.
 
-### Step 8 — Follow-up context
+### Step 9 — Follow-up context
 
 After analysis, before ending the turn, collect experimental context using `prompts/followup.md`: sample, aim, channels, treatments, controls/comparators, and replicate status. Ask whether the user wants result interpretation handled by `lsm-result-interpret`.
 

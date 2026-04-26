@@ -21,7 +21,7 @@ Choose `<run_id>` from the task and timestamp or user-provided label, e.g. `tl_s
 | `00_intake` | `00_intake.json`, optional `00_intake.md` | User request, input paths, assumptions, intended outputs |
 | `01_file_metadata` | `01_file_inventory.csv`, `01_file_metadata.json`, optional `01_qc_*` figures | File list, dimensions, voxel sizes, intensity ranges, visual QC |
 | `02_layout` | `02_layout_detection.json`, optional `02_layout_notes.md` | Layout/routing decisions and ambiguity notes |
-| `03_evidence` | `03_method_search_request.json`, `03_evidence_pack.json`, or `03_evidence_gap.md` | Search request, method evidence, skipped-network note |
+| `03_evidence` | `03_method_search_request.json`, `03_evidence_pack.json`, `03_method_recommendation.md`, optional `03_method_recommendation.json`, or `03_evidence_gap.md` | Search request, method evidence, user-facing recommendation/approval gate, skipped-network note |
 | `04_pipeline` | `04_pipeline_decision.md`, optional `04_pipeline_decision.json` | Selected pipeline and rejected alternatives |
 | `05_extension` | `05_extension_status.json`; if used: `05_extension_plan.md`, `05_extension_verification.json`, `05_extension_smoke_test.txt`, `05_extension_provenance.json` | Extension gate trace |
 | `06_intermediate` | `06_intermediate_*` tables/JSON/figures | Derived tables, cleaned data, normalized values, QC plots |
@@ -76,4 +76,5 @@ If a stage is not applicable, still create a small status file explaining why, e
 - Do not overwrite raw data.
 - Do not only save the final figure.
 - Do not hide failed searches, skipped extension gates, or failed smoke tests.
+- Do not install, write adapters/tools, or run full analysis for a new method before saving the method recommendation and receiving user approval.
 - Do not omit caveats from `08_summary.json`.

@@ -12,6 +12,20 @@ This is a reference for choosing approaches. **Always verify with `ai4s-web-sear
 | Very noisy data | Denoise first, then segment | Cellpose3 has built-in restoration |
 | Large dataset (>1000 images) | Classical (faster) | Fine-tune Cellpose on subset |
 
+## 2D Spot Detection Benchmarks
+
+For point-annotation benchmarks, do not evaluate a segmentation mask as if it were a spot detector. Use point predictions and one-to-one matching against ground-truth coordinates within a declared pixel radius.
+
+Before implementing or running a benchmark pipeline, search for current methods and present a recommendation to the user. Do not install Spotiflow, add an adapter, write a new benchmark tool, or run a full benchmark until the user approves the method/use plan.
+
+| Situation | Try First | If It Fails |
+|-----------|----------|-------------|
+| Spotiflow benchmark-like data or dense/noisy FISH spots | Recommend Spotiflow after web verification | If declined, offer a clearly labeled LoG/DoG fallback |
+| Dataset has train/val/test splits | Select detector parameters on train/val only | Do not tune on test GT |
+| Dense, noisy, subpixel spots | Spotiflow after approval and smoke test | Record install/model provenance |
+
+Always report precision, recall, F1, TP/FP/FN, matching radius, and localization error in pixels unless physical calibration is provided.
+
 ## Key Libraries to Search For
 
 - **Cellpose**: General-purpose cell segmentation. Evolving fast — always check latest version.
