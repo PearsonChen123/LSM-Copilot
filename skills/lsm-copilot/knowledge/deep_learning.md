@@ -11,7 +11,6 @@
 | napari | Interactive multi-dimensional viewer | "napari plugins [your task]" |
 | CARE / CSBDeep | Image restoration (needs training pairs) | "CARE microscopy denoising" |
 | Noise2Void | Self-supervised denoising (no pairs) | "Noise2Void python tutorial" |
-| Spotiflow | Spot/puncta detection | "Spotiflow documentation" |
 | Trackastra | DL-based particle tracking | "Trackastra tracking" |
 | PhasorPy | FLIM phasor analysis | "PhasorPy documentation" |
 | MicroLive | Live-cell analysis GUI | "MicroLive microscopy" |

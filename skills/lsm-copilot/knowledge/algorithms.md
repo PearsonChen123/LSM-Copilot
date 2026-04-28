@@ -16,13 +16,15 @@ This is a reference for choosing approaches. **Always verify with `ai4s-web-sear
 
 For point-annotation benchmarks, do not evaluate a segmentation mask as if it were a spot detector. Use point predictions and one-to-one matching against ground-truth coordinates within a declared pixel radius.
 
-Before implementing or running a benchmark pipeline, search for current methods and present a recommendation to the user. Do not install Spotiflow, add an adapter, write a new benchmark tool, or run a full benchmark until the user approves the method/use plan.
+Before implementing or running a benchmark pipeline, search current methods via `ai4s-web-search` and present a per-data recommendation to the user. Do not install any package, write an ad-hoc adapter script, or run a full benchmark until the user approves the chosen method.
+
+No specific spot-detection tool is hardcoded as the answer. The right method depends on density, SNR, modality (FISH / puncta / single-molecule / live-cell), available pretrained models, and dataset splits — verify per dataset.
 
 | Situation | Try First | If It Fails |
 |-----------|----------|-------------|
-| Spotiflow benchmark-like data or dense/noisy FISH spots | Recommend Spotiflow after web verification | If declined, offer a clearly labeled LoG/DoG fallback |
+| Any new spot-detection task | Run `ai4s-web-search` for current best-fit method; recommend with evidence and request approval | If declined or evidence is thin, offer a clearly labeled classical LoG/DoG fallback |
 | Dataset has train/val/test splits | Select detector parameters on train/val only | Do not tune on test GT |
-| Dense, noisy, subpixel spots | Spotiflow after approval and smoke test | Record install/model provenance |
+| Dense, noisy, subpixel spots | Verify a current DL spot detector fits the data; if approved, write a thin ad-hoc adapter script under `tools/extensions/` | Record install/model provenance and smoke-test before full run |
 
 Always report precision, recall, F1, TP/FP/FN, matching radius, and localization error in pixels unless physical calibration is provided.
 

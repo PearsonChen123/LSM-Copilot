@@ -171,7 +171,7 @@ If the user approves the recommendation, continue to the approved built-in path 
 | Goal | Starting point |
 |------|----------------|
 | Detect and measure objects (2D) | Classical 2D segmentation (Otsu + watershed); optional DL segmenter if evidence supports it |
-| Benchmark 2D fluorescence spot detection | First search current spot-detection methods. If evidence supports Spotiflow or another stronger method, recommend it and wait for approval before installing/writing adapters/running. If declined, use a clearly labeled classical LoG/DoG baseline. |
+| Benchmark 2D fluorescence spot detection | Search `ai4s-web-search` for current spot-detection methods that fit the data (density, SNR, FISH/puncta/single-molecule, splits available). Recommend the best-fit method with evidence and wait for approval before installing or writing any adapter script. If declined or no strong evidence, use a clearly labeled classical LoG/DoG baseline. Do not assume any specific named tool is correct without per-dataset verification. |
 | Detect and measure objects (3D) | Interactive 3D thresholding pipeline (Gaussian → background subtraction → Otsu → 3D CC → regionprops) |
 | Fluorescence intensity | Z-depth profile / attenuation correction |
 | Colocalization | Pearson / Manders pixel-based; object-based if evidence supports it |
